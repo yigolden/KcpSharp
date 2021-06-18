@@ -1,0 +1,176 @@
+﻿@using System;
+@using System.Buffers;
+@using System.Text;
+@using System.Threading;
+@using Microsoft.AspNetCore.Components.Web
+@using KcpSharp;
+
+@implements IDisposable
+
+<div style="width: 100%; height: 100%">
+    <div>
+        This demo uses a in-memory bidirectional channel to pump packets produced by KcpSharp from one side of the client to the other. It shows that KcpSharp works asynchronously and can function in a single-thread environment (like WebAssembly).
+    </div>
+    <div style="display: flex; flex-direction: row">
+        <div style="flex-grow: 1">
+            <ul>
+                @foreach ((int key, string message) in MessageList1)
+                {
+                    <li @key="key">@message</li>
+                }
+            </ul>
+            <div>
+                <input @bind="Input1" disabled="@Input1Busy" />
+                <button type="button" disabled="@Input1Busy" @onclick="SendInput1">Send</button>
+            </div>
+        </div>
+        <div style="flex-grow: 1">
+            <ul>
+                @foreach ((int key, string message) in MessageList2)
+                {
+                    <li @key="key">@message</li>
+                }
+            </ul>
+            <div>
+                <input @bind="Input2" disabled="@Input2Busy" />
+                <button type="button" disabled="@Input2Busy" @onclick="SendInput2">Send</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    private string Input1 { get; set; }
+    private string Input2 { get; set; }
+    private bool Input1Busy { get; set; }
+    private bool Input2Busy { get; set; }
+    private List<(int, string)> MessageList1 { get; } = new List<(int, string)>();
+    private List<(int, string)> MessageList2 { get; } = new List<(int, string)>();
+
+    private PerfectKcpConversationPipe _pipe;
+
+    protected override Task OnInitializedAsync()
+    {
+        _pipe = new PerfectKcpConversationPipe(0, null, null);
+        _ = Task.Run(() => ReceiveLoop(_pipe.Alice, MessageList1));
+        _ = Task.Run(() => ReceiveLoop(_pipe.Bob, MessageList2));
+
+        return base.OnInitializedAsync();
+    }
+
+    private async Task ReceiveLoop(KcpConversation conversation, List<(int, string)> list)
+    {
+        int index = 0;
+        while (true)
+        {
+            KcpConversationReceiveResult result = await conversation.WaitToReceiveAsync(CancellationToken.None);
+            if (result.TransportClosed)
+            {
+                break;
+            }
+
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(result.BytesReceived);
+            try
+            {
+                result = await conversation.ReceiveAsync(buffer, CancellationToken.None);
+                if (result.TransportClosed)
+                {
+                    break;
+                }
+
+                try
+                {
+                    string message = Encoding.UTF8.GetString(buffer.AsSpan(0, result.BytesReceived));
+                    list.Add((index++, "Received: " + message));
+                }
+                catch
+                {
+                    list.Add((index++, "Error: Failed to decode message."));
+                }
+
+                StateHasChanged();
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+    }
+
+    private async Task SendInput1()
+    {
+        PerfectKcpConversationPipe pipe = _pipe;
+        if (Input1Busy || pipe is null)
+        {
+            return;
+        }
+        try
+        {
+            Input1Busy = true;
+
+            string message = Input1 ?? string.Empty;
+
+            await SendMessage(pipe.Alice, message);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+        finally
+        {
+            Input1Busy = _pipe is null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendInput2()
+    {
+        PerfectKcpConversationPipe pipe = _pipe;
+        if (Input2Busy || pipe is null)
+        {
+            return;
+        }
+        try
+        {
+            Input2Busy = true;
+
+            string message = Input2 ?? string.Empty;
+
+            await SendMessage(pipe.Bob, message);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+        finally
+        {
+            Input2Busy = _pipe is null;
+            StateHasChanged();
+        }
+    }
+
+    private static async Task SendMessage(KcpConversation conversation, string message)
+    {
+        int length = Encoding.UTF8.GetByteCount(message);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            length = Encoding.UTF8.GetBytes(message, buffer);
+
+            await conversation.SendAsync(buffer.AsMemory(0, length), CancellationToken.None);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public void Dispose()
+    {
+        Input1Busy = true;
+        Input2Busy = true;
+        Interlocked.Exchange(ref _pipe, null)?.Dispose();
+    }
+
+}
