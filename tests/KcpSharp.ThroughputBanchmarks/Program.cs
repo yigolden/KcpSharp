@@ -1,4 +1,5 @@
-﻿using System.CommandLine.Builder;
+﻿using System;
+using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
 using System.Threading.Tasks;
 using KcpSharp.ThroughputBanchmarks.PacketsThroughputBenchmark;
@@ -10,6 +11,8 @@ namespace KcpSharp.ThroughputBanchmarks
     {
         static async Task<int> Main(string[] args)
         {
+            Console.WriteLine($"Process ID: {Environment.ProcessId}");
+
             var builder = new CommandLineBuilder();
             builder.Command.Description = "KcpSharp.ThroughputBanchmarks";
 
