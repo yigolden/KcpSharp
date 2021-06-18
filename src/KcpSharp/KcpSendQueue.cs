@@ -102,9 +102,9 @@ namespace KcpSharp
                 int count = (buffer.Length <= mss) ? 1 : (buffer.Length + mss - 1) / mss;
                 Debug.Assert(count >= 1);
 
-                if (!_stream && count > 128)
+                if (!_stream && count > 256)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewPacketTooLarge()));
+                    return new ValueTask(Task.FromException(ThrowHelper.NewMessageTooLarge()));
                 }
 
                 // synchronously put fragments into queue.

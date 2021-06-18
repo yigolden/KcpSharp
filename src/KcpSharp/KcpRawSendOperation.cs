@@ -108,7 +108,7 @@ namespace KcpSharp
                 if (source.Length > buffer.Length)
                 {
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewPacketTooLarge());
+                    _mrvtsc.SetException(ThrowHelper.NewMessageTooLarge());
                     bytesWritten = 0;
                     return false;
                 }

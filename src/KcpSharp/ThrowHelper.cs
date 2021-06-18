@@ -8,9 +8,9 @@ namespace KcpSharp
         {
             return new KcpException("The transport has already been closed.");
         }
-        public static Exception NewPacketTooLarge()
+        public static Exception NewMessageTooLarge()
         {
-            return new InvalidOperationException("Packet is too large.");
+            return new InvalidOperationException("Message is too large.");
         }
         public static Exception NewBufferTooSmall()
         {
