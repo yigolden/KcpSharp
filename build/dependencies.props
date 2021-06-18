@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup Label="Package Versions">
+    <MicrosoftSourceLinkGitHubPackageVersion>1.0.0</MicrosoftSourceLinkGitHubPackageVersion>
+
+    <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0-preview.5.21301.5</MicrosoftBclAsyncInterfacesPackageVersion>
+    <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
+    <SystemMemoryPackageVersion>4.5.4</SystemMemoryPackageVersion>
+    <SystemRuntimeCompilerServicesUnsafePackageVersion>6.0.0-preview.5.21301.5</SystemRuntimeCompilerServicesUnsafePackageVersion>
+    <SystemThreadingTasksExtensionsPackageVersion>4.5.4</SystemThreadingTasksExtensionsPackageVersion>
+  </PropertyGroup>
+</Project>
