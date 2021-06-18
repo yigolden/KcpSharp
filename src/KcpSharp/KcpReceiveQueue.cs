@@ -105,7 +105,18 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    ConsumePacket();
+                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    {
+                        ClearPreviousOperation();
+                        if (exception is null)
+                        {
+                            return new ValueTask<KcpConversationReceiveResult>(result);
+                        }
+                        else
+                        {
+                            return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(exception));
+                        }
+                    }
                 }
             }
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpReceiveQueue?)state)!.SetCanceled(), this);
@@ -144,7 +155,18 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    ConsumePacket();
+                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    {
+                        ClearPreviousOperation();
+                        if (exception is null)
+                        {
+                            return new ValueTask<KcpConversationReceiveResult>(result);
+                        }
+                        else
+                        {
+                            return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(exception));
+                        }
+                    }
                 }
             }
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpReceiveQueue?)state)!.SetCanceled(), this);
@@ -206,7 +228,18 @@ namespace KcpSharp
                 if (fragment == 0)
                 {
                     _completedPacketsCount++;
-                    ConsumePacket();
+                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    {
+                        ClearPreviousOperation();
+                        if (exception is null)
+                        {
+                            _mrvtsc.SetResult(result);
+                        }
+                        else
+                        {
+                            _mrvtsc.SetException(exception);
+                        }
+                    }
                 }
             }
         }
@@ -225,16 +258,16 @@ namespace KcpSharp
             return node;
         }
 
-        private void ConsumePacket()
+        private bool ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception)
         {
             if (_operationOngoing)
             {
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 if (node is null)
                 {
-                    ClearPreviousOperation();
-                    _mrvtsc.SetResult(default);
-                    return;
+                    result = default;
+                    exception = default;
+                    return true;
                 }
 
                 // peek
@@ -242,15 +275,14 @@ namespace KcpSharp
                 {
                     if (CalculatePacketSize(node, out int bytesRecevied))
                     {
-                        ClearPreviousOperation();
-                        _mrvtsc.SetResult(new KcpConversationReceiveResult(bytesRecevied));
+                        result = new KcpConversationReceiveResult(bytesRecevied);
                     }
                     else
                     {
-                        ClearPreviousOperation();
-                        _mrvtsc.SetResult(default);
+                        result = default;
                     }
-                    return;
+                    exception = default;
+                    return true;
                 }
 
                 // ensure buffer is big enough
@@ -270,16 +302,16 @@ namespace KcpSharp
                     if (node is null)
                     {
                         // incomplete packet
-                        ClearPreviousOperation();
-                        _mrvtsc.SetResult(default);
-                        return;
+                        result = default;
+                        exception = default;
+                        return true;
                     }
 
                     if (bytesInPacket > _buffer.Length)
                     {
-                        ClearPreviousOperation();
-                        _mrvtsc.SetException(ThrowHelper.NewBufferTooSmall());
-                        return;
+                        result = default;
+                        exception = ThrowHelper.NewBufferTooSmall();
+                        return true;
                     }
                 }
 
@@ -334,15 +366,21 @@ namespace KcpSharp
                 ClearPreviousOperation();
                 if (!anyDataReceived)
                 {
-                    _mrvtsc.SetResult(default);
-                    return;
+                    result = default;
+                    exception = default;
+                    return true;
                 }
                 else
                 {
-                    _mrvtsc.SetResult(new KcpConversationReceiveResult(bytesInPacket));
-                    return;
+                    result = new KcpConversationReceiveResult(bytesInPacket);
+                    exception = default;
+                    return true;
                 }
             }
+
+            result = default;
+            exception = default;
+            return false;
         }
 
         private static bool CalculatePacketSize(LinkedListNodeOfQueueItem first, out int packetSize)
