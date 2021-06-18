@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
   <PropertyGroup Label="Package Versions">
-    <MicrosoftSourceLinkGitHubPackageVersion>1.0.0</MicrosoftSourceLinkGitHubPackageVersion>
+    <SystemCommandLinePackageVersion>2.0.0-beta1.21216.1</SystemCommandLinePackageVersion>
 
     <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0-preview.5.21301.5</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
