@@ -6,6 +6,8 @@
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <AnalysisLevel>latest</AnalysisLevel>
 
+    <Description>C# asynchronous KCP protocol implementation. (ported from https://github.com/skywind3000/kcp)</Description>
+
     <NoWarn>$(NoWarn);CA1508;CA2002;CA2213</NoWarn>
     <!-- CA1508: Avoid dead conditional code -->
     <!-- CA2002: Do not lock on objects with weak identity -->
