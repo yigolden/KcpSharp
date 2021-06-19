@@ -157,6 +157,11 @@ namespace KcpSharp
             => _sendQueue.SendAsync(buffer, cancellationToken);
 
         /// <summary>
+        /// Gets the count of bytes not yet sent to the remote host or not acknowledged by the remote host.
+        /// </summary>
+        public long UnflushedBytes => _sendQueue.GetUnflushedBytes();
+
+        /// <summary>
         /// Wait until all messages are sent and acknowledged by the remote host.
         /// </summary>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
@@ -848,7 +853,10 @@ namespace KcpSharp
                     if (TimeDiff(una, node.ValueRef.Segment.SerialNumber) > 0)
                     {
                         _sndBuf.Remove(node);
-                        node.ValueRef.Data.Release();
+                        ref KcpBuffer dataRef = ref node.ValueRef.Data;
+                        _sendQueue.SubtractUnflushedBytes(dataRef.Length);
+                        dataRef.Release();
+                        dataRef = default;
                         _cache.Return(node);
                     }
                     else
@@ -923,7 +931,10 @@ namespace KcpSharp
                     if (serialNumber == node.ValueRef.Segment.SerialNumber)
                     {
                         _sndBuf.Remove(node);
-                        node.ValueRef.Data.Release();
+                        ref KcpBuffer dataRef = ref node.ValueRef.Data;
+                        _sendQueue.SubtractUnflushedBytes(dataRef.Length);
+                        dataRef.Release();
+                        dataRef = default;
                         _cache.Return(node);
                         break;
                     }
@@ -999,6 +1010,7 @@ namespace KcpSharp
                     {
                         _rcvBuf.Remove(node);
                         _receiveQueue.Enqueue(node.ValueRef.Data, node.ValueRef.Segment.Fragment);
+                        node.ValueRef.Data = default;
                         _cache.Return(node);
                         _rcv_nxt++;
                     }

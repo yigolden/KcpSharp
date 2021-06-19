@@ -25,6 +25,7 @@ namespace KcpSharp
 
         private readonly LinkedListOfQueueItem _queue;
         private readonly LinkedListOfQueueItem _recycled;
+        private long _unflushedBytes;
 
         private bool _transportClosed;
         private bool _disposed;
@@ -91,6 +92,7 @@ namespace KcpSharp
                         {
                             data = data.AppendData(buffer.Span.Slice(0, expand));
                             buffer = buffer.Slice(expand);
+                            Interlocked.Add(ref _unflushedBytes, expand);
                         }
                     }
 
@@ -118,6 +120,7 @@ namespace KcpSharp
                     buffer = buffer.Slice(size);
 
                     _queue.AddLast(AllocateNode(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
+                    Interlocked.Add(ref _unflushedBytes, size);
                 }
 
                 _updateNotification.TrySet(false);
@@ -253,6 +256,7 @@ namespace KcpSharp
                 _buffer = buffer.Slice(size);
 
                 _queue.AddLast(AllocateNode(kcpBuffer, _stream ? (byte)0 : (byte)(count - 1)));
+                Interlocked.Add(ref _unflushedBytes, size);
 
                 if (count == 1)
                 {
@@ -270,6 +274,12 @@ namespace KcpSharp
                 _mrvtsc.SetResult(true);
             }
         }
+
+        public void SubtractUnflushedBytes(int size)
+            => Interlocked.Add(ref _unflushedBytes, -size);
+
+        public long GetUnflushedBytes()
+            => Interlocked.Read(ref _unflushedBytes);
 
         public void SetTransportClosed()
         {
