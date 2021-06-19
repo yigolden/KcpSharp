@@ -150,11 +150,22 @@ namespace KcpSharp
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
-        /// <exception cref="InvalidOperationException">The send operation is initiated concurrently.</exception>
+        /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendQueue.SendAsync(buffer, cancellationToken);
+
+        /// <summary>
+        /// Wait until all messages are sent and acknowledged by the remote host.
+        /// </summary>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
+        /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the all messages are sent and acknowledged. The result of the task is false when the transport is closed.</returns>
+        public ValueTask<bool> FlushAsync(CancellationToken cancellationToken)
+            => _sendQueue.FlushAsync(cancellationToken);
 
         private int Check(uint current)
         {
@@ -198,7 +209,7 @@ namespace KcpSharp
             return Math.Min(minimal, (int)_interval);
         }
 
-        private async Task FlushAsync(CancellationToken cancellationToken)
+        private async Task FlushCoreAsync(CancellationToken cancellationToken)
         {
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
@@ -333,7 +344,7 @@ namespace KcpSharp
             // move data from snd_queue to snd_buf
             while (TimeDiff(_snd_nxt, _snd_una + cwnd) < 0)
             {
-                if (!_sendQueue.TryDequeue(out KcpBuffer data, out byte fragment))
+                if (!_sendQueue.TryDequeue(TimeDiff(_snd_una, _snd_nxt), out KcpBuffer data, out byte fragment))
                 {
                     break;
                 }
@@ -625,7 +636,7 @@ namespace KcpSharp
                 {
                     _ts_flush = current + _interval;
                 }
-                return new ValueTask(FlushAsync(cancellationToken));
+                return new ValueTask(FlushCoreAsync(cancellationToken));
             }
             return default;
         }

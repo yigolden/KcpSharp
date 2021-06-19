@@ -30,6 +30,7 @@ namespace KcpSharp
         private bool _disposed;
 
         private bool _operationOngoing;
+        private bool _bufferProvided; // true-send, false-flush
         private ReadOnlyMemory<byte> _buffer;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
@@ -128,7 +129,43 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
+                _bufferProvided = true;
                 _buffer = buffer;
+                _cancellationToken = cancellationToken;
+                token = _mrvtsc.Version;
+            }
+
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
+
+            return new ValueTask<bool>(this, token);
+        }
+
+        public ValueTask<bool> FlushAsync(CancellationToken cancellationToken)
+        {
+            short token;
+            lock (_queue)
+            {
+                if (_disposed)
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
+                }
+                if (_transportClosed)
+                {
+                    return new ValueTask<bool>(false);
+                }
+                if (_operationOngoing)
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
+                }
+
+                _mrvtsc.Reset();
+                _operationOngoing = true;
+                _bufferProvided = false;
+                _buffer = default;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
             }
@@ -168,19 +205,24 @@ namespace KcpSharp
         private void ClearPreviousOperation()
         {
             _operationOngoing = false;
+            _bufferProvided = false;
             _buffer = default;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
         }
 
-        public bool TryDequeue(out KcpBuffer data, out byte fragment)
+        public bool TryDequeue(int itemsInSendWindow, out KcpBuffer data, out byte fragment)
         {
             lock (_queue)
             {
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 if (node is null)
                 {
+                    if (itemsInSendWindow == 0)
+                    {
+                        CompleteFlush();
+                    }
                     data = default;
                     fragment = default;
                     return false;
@@ -200,7 +242,7 @@ namespace KcpSharp
 
         private void MoveOneFragmentIn()
         {
-            if (_operationOngoing)
+            if (_operationOngoing && _bufferProvided)
             {
                 ReadOnlyMemory<byte> buffer = _buffer;
                 int mss = _mss;
@@ -217,6 +259,15 @@ namespace KcpSharp
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(true);
                 }
+            }
+        }
+
+        private void CompleteFlush()
+        {
+            if (_operationOngoing && !_bufferProvided)
+            {
+                ClearPreviousOperation();
+                _mrvtsc.SetResult(true);
             }
         }
 

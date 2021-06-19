@@ -81,9 +81,9 @@ namespace KcpSharp.Tests
         [Theory]
         public Task TestSinglePacketReceive(int packetSize)
         {
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 124, UpdateInterval = 30, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 124, UpdateInterval = 10, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
 
                 byte[] packet = new byte[packetSize];
                 Random.Shared.NextBytes(packet);
