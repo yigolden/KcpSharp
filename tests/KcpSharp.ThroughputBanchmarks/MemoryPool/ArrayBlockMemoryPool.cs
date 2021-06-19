@@ -7,12 +7,12 @@ namespace KcpSharp.ThroughputBanchmarks
     /// <summary>
     /// Used to allocate and distribute re-usable blocks of memory.
     /// </summary>
-    internal sealed class PinnedBlockMemoryPool : MemoryPool<byte>, IKcpBufferAllocator
+    internal sealed class ArrayBlockMemoryPool : MemoryPool<byte>, IKcpBufferAllocator
     {
         /// <summary>
-        /// The size of a block. 4096 is chosen because most operating systems use 4k pages.
+        /// The size of a block.
         /// </summary>
-        private readonly int _blockSize = 4096;
+        private readonly int _blockSize;
 
         /// <summary>
         /// Max allocation block size for pooled blocks,
@@ -38,7 +38,7 @@ namespace KcpSharp.ThroughputBanchmarks
         /// </summary>
         private const int AnySize = -1;
 
-        public PinnedBlockMemoryPool(int blockSize)
+        public ArrayBlockMemoryPool(int blockSize)
         {
             if (blockSize < 0)
             {
@@ -56,7 +56,7 @@ namespace KcpSharp.ThroughputBanchmarks
 
             if (_isDisposed)
             {
-                throw new ObjectDisposedException(nameof(PinnedBlockMemoryPool));
+                throw new ObjectDisposedException(nameof(ArrayBlockMemoryPool));
             }
 
             if (_blocks.TryDequeue(out MemoryPoolBlock? block))

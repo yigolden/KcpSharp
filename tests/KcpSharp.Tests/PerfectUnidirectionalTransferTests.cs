@@ -109,10 +109,10 @@ namespace KcpSharp.Tests
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = true });
 
                 Task<KcpConversationReceiveResult> receiveTask = pipe.Bob.ReceiveAsync(default, cancellationToken).AsTask();
-                await Task.Delay(500);
+                await Task.Delay(500, cancellationToken);
                 Assert.False(receiveTask.IsCompleted);
                 await pipe.Alice.SendAsync(new byte[100], cancellationToken);
-                await Task.Delay(500);
+                await Task.Delay(500, cancellationToken);
                 Assert.True(receiveTask.IsCompleted);
                 KcpConversationReceiveResult result = await receiveTask;
                 Assert.False(result.TransportClosed);

@@ -185,7 +185,7 @@ namespace KcpSharp.Tests
                     using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
                     Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
-                    await Task.Delay(2000);
+                    await Task.Delay(2000, cancellationToken);
 
                     pipe.Alice.SetTransportClosed();
                     pipe.Bob.SetTransportClosed();
