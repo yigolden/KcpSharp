@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,27 +19,29 @@ namespace KcpSharp.Tests
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
 
-                Assert.False(pipe.Bob.TryPeek(out int packetSize));
-                Assert.Equal(0, packetSize);
+                KcpConversationReceiveResult result;
+                Assert.False(pipe.Bob.TryPeek(out result));
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
+                Assert.Equal(0, result.BytesReceived);
 
                 byte[] data1 = new byte[4096];
                 Random.Shared.NextBytes(data1);
                 await pipe.Alice.SendAsync(data1, cancellationToken);
 
-                KcpConversationReceiveResult result;
                 if (waitToReceive)
                 {
                     result = await pipe.Bob.WaitToReceiveAsync(cancellationToken);
                     Assert.False(result.TransportClosed, "Transport should not be closed.");
                     Assert.Equal(4096, result.BytesReceived);
 
-                    Assert.True(pipe.Bob.TryPeek(out packetSize));
-                    Assert.Equal(4096, packetSize);
+                    Assert.True(pipe.Bob.TryPeek(out result));
+                    Assert.False(result.TransportClosed, "Transport should not be closed.");
+                    Assert.Equal(4096, result.BytesReceived);
                 }
 
                 byte[] data2 = new byte[4096];
                 result = await pipe.Bob.ReceiveAsync(data2, cancellationToken);
-                Assert.False(result.TransportClosed);
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
                 Assert.Equal(4096, result.BytesReceived);
 
                 Assert.True(data1.AsSpan().SequenceEqual(data2.AsSpan()));
@@ -66,7 +69,7 @@ namespace KcpSharp.Tests
                 if (stream)
                 {
                     KcpConversationReceiveResult result = await receiveTask;
-                    Assert.False(result.TransportClosed);
+                    Assert.False(result.TransportClosed, "Transport should not be closed.");
                     Assert.Equal(0, result.BytesReceived);
                 }
                 else
@@ -91,11 +94,11 @@ namespace KcpSharp.Tests
                 if (waitToReceive)
                 {
                     result = await pipe.Bob.WaitToReceiveAsync(cancellationToken);
-                    Assert.False(result.TransportClosed);
+                    Assert.False(result.TransportClosed, "Transport should not be closed.");
                     Assert.Equal(0, result.BytesReceived);
                 }
                 result = await pipe.Bob.ReceiveAsync(default, cancellationToken);
-                Assert.False(result.TransportClosed);
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
                 Assert.Equal(0, result.BytesReceived);
                 await AssertReceiveNoDataAsync(pipe.Bob, waitToReceive);
             });
@@ -115,10 +118,10 @@ namespace KcpSharp.Tests
                 await Task.Delay(500, cancellationToken);
                 Assert.True(receiveTask.IsCompleted);
                 KcpConversationReceiveResult result = await receiveTask;
-                Assert.False(result.TransportClosed);
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
                 Assert.Equal(0, result.BytesReceived);
                 result = await pipe.Bob.ReceiveAsync(new byte[200], cancellationToken);
-                Assert.False(result.TransportClosed);
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
                 Assert.Equal(100, result.BytesReceived);
             });
         }
@@ -143,7 +146,7 @@ namespace KcpSharp.Tests
                 while (bytesRead < 2000)
                 {
                     KcpConversationReceiveResult result = await pipe.Bob.ReceiveAsync(buffer2.AsMemory(bytesRead), cancellationToken);
-                    Assert.False(result.TransportClosed);
+                    Assert.False(result.TransportClosed, "Transport should not be closed.");
                     bytesRead += result.BytesReceived;
                 }
 
@@ -179,9 +182,6 @@ namespace KcpSharp.Tests
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30 });
 
-                Assert.False(pipe.Bob.TryPeek(out int packetSize));
-                Assert.Equal(0, packetSize);
-
                 Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                 Task receiveTask = ReceiveMultiplePacketsAsync(pipe.Bob, packets, maxPacketSize, waitToReceive, cancellationToken);
                 await Task.WhenAll(sendTask, receiveTask);
@@ -210,8 +210,9 @@ namespace KcpSharp.Tests
                         Assert.False(result.TransportClosed, "Transport should not be closed.");
                         Assert.Equal(packet.Length, result.BytesReceived);
 
-                        Assert.True(conversation.TryPeek(out int packetSize));
-                        Assert.Equal(packet.Length, packetSize);
+                        Assert.True(conversation.TryPeek(out result));
+                        Assert.False(result.TransportClosed, "Transport should not be closed.");
+                        Assert.Equal(packet.Length, result.BytesReceived);
                     }
                     result = await conversation.ReceiveAsync(buffer, cancellationToken);
                     Assert.False(result.TransportClosed, "Transport should not be closed.");
@@ -283,7 +284,7 @@ namespace KcpSharp.Tests
                 if (waitToReceive)
                 {
                     result = await pipe.Bob.WaitToReceiveAsync(cancellationToken);
-                    Assert.False(result.TransportClosed);
+                    Assert.False(result.TransportClosed, "Transport should not be closed.");
                     Assert.Equal(buffer.Length, result.BytesReceived);
                 }
 
@@ -292,7 +293,7 @@ namespace KcpSharp.Tests
 
                 byte[] buffer2 = new byte[buffer.Length + 100];
                 result = await pipe.Bob.ReceiveAsync(buffer2, cancellationToken);
-                Assert.False(result.TransportClosed);
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
                 Assert.Equal(buffer.Length, result.BytesReceived);
 
                 Assert.True(buffer2.AsSpan(0, result.BytesReceived).SequenceEqual(buffer));

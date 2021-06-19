@@ -1054,8 +1054,23 @@ namespace KcpSharp
         private static int TimeDiff(uint later, uint earlier)
             => (int)(later - earlier);
 
-        public bool TryPeek(out int packetSize)
-            => _receiveQueue.TryPeek(out packetSize);
+        /// <summary>
+        /// Get the size of the next available message in the receive queue.
+        /// </summary>
+        /// <param name="result">The transport state and the size of the next available message.</param>
+        /// <returns>True if the receive queue contains at least one message. False if the receive queue is empty or the transport is closed.</returns>
+        public bool TryPeek(out KcpConversationReceiveResult result)
+            => _receiveQueue.TryPeek(out result);
+
+        /// <summary>
+        /// Remove the next available message in the receive queue and copy its content into <paramref name="buffer"/>. When in stream mode, move as many bytes as possible into <paramref name="buffer"/>.
+        /// </summary>
+        /// <param name="buffer">The buffer to receive message.</param>
+        /// <param name="result">The transport state and the count of bytes moved into <paramref name="buffer"/>.</param>
+        /// <exception cref="InvalidOperationException">The size of the next available message is larger than the size of <paramref name="buffer"/>. This exception is never thrown in stream mode.</exception>
+        /// <returns>True if the next available message is moved into <paramref name="buffer"/>. False if the receive queue is empty or the transport is closed.</returns>
+        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+            => _receiveQueue.TryReceive(buffer, out result);
 
         public ValueTask<KcpConversationReceiveResult> WaitToReceiveAsync(CancellationToken cancellationToken)
             => _receiveQueue.WaitToReceiveAsync(cancellationToken);

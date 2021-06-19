@@ -16,6 +16,10 @@ namespace KcpSharp
         {
             return new InvalidOperationException("Buffer is too small.");
         }
+        public static Exception ThrowBufferTooSmall()
+        {
+            throw new InvalidOperationException("Buffer is too small.");
+        }
         public static Exception NewConcurrentSendException()
         {
             return new InvalidOperationException("Concurrent send operations are not allowed.");
@@ -23,6 +27,10 @@ namespace KcpSharp
         public static Exception NewConcurrentReceiveException()
         {
             return new InvalidOperationException("Concurrent receive operations are not allowed.");
+        }
+        public static void ThrowConcurrentReceiveException()
+        {
+            throw new InvalidOperationException("Concurrent receive operations are not allowed.");
         }
         public static Exception NewObjectDisposedExceptionForKcpConversation()
         {

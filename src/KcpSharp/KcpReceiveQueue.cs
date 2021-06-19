@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
+using System.Diagnostics;
 
 #if NEED_LINKEDLIST_SHIM
 using LinkedListOfQueueItem = KcpSharp.NetstandardShim.LinkedList<(KcpSharp.KcpBuffer Data, byte Fragment)>;
@@ -47,30 +48,41 @@ namespace KcpSharp
         void IValueTaskSource<KcpConversationReceiveResult>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        public bool TryPeek(out int packetSize)
+        public bool TryPeek(out KcpConversationReceiveResult result)
         {
             lock (_queue)
             {
-                if (_disposed || _transportClosed || _operationOngoing)
+                if (_disposed || _transportClosed)
                 {
-                    packetSize = 0;
+                    result = default;
                     return false;
+                }
+                if (_operationOngoing)
+                {
+                    ThrowHelper.ThrowConcurrentReceiveException();
                 }
 
                 if (_completedPacketsCount == 0)
                 {
-                    packetSize = 0;
+                    result = new KcpConversationReceiveResult(0);
                     return false;
                 }
 
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 if (node is null)
                 {
-                    packetSize = 0;
+                    result = new KcpConversationReceiveResult(0);
                     return false;
                 }
 
-                return CalculatePacketSize(node, out packetSize);
+                if (CalculatePacketSize(node, out int packetSize))
+                {
+                    result = new KcpConversationReceiveResult(packetSize);
+                    return true;
+                }
+
+                result = default;
+                return false;
             }
         }
 
@@ -105,23 +117,57 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                    ClearPreviousOperation();
+                    if (bufferTooSmall)
                     {
-                        ClearPreviousOperation();
-                        if (exception is null)
-                        {
-                            return new ValueTask<KcpConversationReceiveResult>(result);
-                        }
-                        else
-                        {
-                            return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(exception));
-                        }
+                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmall()));
+                    }
+                    else
+                    {
+                        return new ValueTask<KcpConversationReceiveResult>(result);
                     }
                 }
             }
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpReceiveQueue?)state)!.SetCanceled(), this);
 
             return new ValueTask<KcpConversationReceiveResult>(this, token);
+        }
+
+        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+        {
+            lock (_queue)
+            {
+                if (_disposed || _transportClosed)
+                {
+                    result = default;
+                    return false;
+                }
+                if (_operationOngoing)
+                {
+                    ThrowHelper.ThrowConcurrentReceiveException();
+                    result = default;
+                    return false;
+                }
+
+                if (_completedPacketsCount == 0)
+                {
+                    result = new KcpConversationReceiveResult(0);
+                    return false;
+                }
+
+                _operationOngoing = true;
+                _bufferProvided = true;
+                _buffer = buffer;
+
+                ConsumePacket(out result, out bool bufferTooSmall);
+                ClearPreviousOperation();
+                if (bufferTooSmall)
+                {
+                    ThrowHelper.ThrowBufferTooSmall();
+                }
+                return true;
+            }
         }
 
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
@@ -155,17 +201,15 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                    ClearPreviousOperation();
+                    if (bufferTooSmall)
                     {
-                        ClearPreviousOperation();
-                        if (exception is null)
-                        {
-                            return new ValueTask<KcpConversationReceiveResult>(result);
-                        }
-                        else
-                        {
-                            return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(exception));
-                        }
+                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmall()));
+                    }
+                    else
+                    {
+                        return new ValueTask<KcpConversationReceiveResult>(result);
                     }
                 }
             }
@@ -228,16 +272,17 @@ namespace KcpSharp
                 if (fragment == 0)
                 {
                     _completedPacketsCount++;
-                    if (ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception))
+                    if (_operationOngoing)
                     {
+                        ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
                         ClearPreviousOperation();
-                        if (exception is null)
+                        if (bufferTooSmall)
                         {
-                            _mrvtsc.SetResult(result);
+                            _mrvtsc.SetException(ThrowHelper.NewBufferTooSmall());
                         }
                         else
                         {
-                            _mrvtsc.SetException(exception);
+                            _mrvtsc.SetResult(result);
                         }
                     }
                 }
@@ -258,129 +303,121 @@ namespace KcpSharp
             return node;
         }
 
-        private bool ConsumePacket(out KcpConversationReceiveResult result, out Exception? exception)
+        private void ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall)
         {
-            if (_operationOngoing)
+            Debug.Assert(_operationOngoing);
+
+            LinkedListNodeOfQueueItem? node = _queue.First;
+            if (node is null)
             {
-                LinkedListNodeOfQueueItem? node = _queue.First;
-                if (node is null)
+                result = default;
+                bufferTooSmall = false;
+                return;
+            }
+
+            // peek
+            if (!_bufferProvided)
+            {
+                if (CalculatePacketSize(node, out int bytesRecevied))
                 {
-                    result = default;
-                    exception = default;
-                    return true;
-                }
-
-                // peek
-                if (!_bufferProvided)
-                {
-                    if (CalculatePacketSize(node, out int bytesRecevied))
-                    {
-                        result = new KcpConversationReceiveResult(bytesRecevied);
-                    }
-                    else
-                    {
-                        result = default;
-                    }
-                    exception = default;
-                    return true;
-                }
-
-                // ensure buffer is big enough
-                int bytesInPacket = 0;
-                if (!_stream)
-                {
-                    while (node is not null)
-                    {
-                        bytesInPacket += node.ValueRef.Data.Length;
-                        if (node.ValueRef.Fragment == 0)
-                        {
-                            break;
-                        }
-                        node = node.Next;
-                    }
-
-                    if (node is null)
-                    {
-                        // incomplete packet
-                        result = default;
-                        exception = default;
-                        return true;
-                    }
-
-                    if (bytesInPacket > _buffer.Length)
-                    {
-                        result = default;
-                        exception = ThrowHelper.NewBufferTooSmall();
-                        return true;
-                    }
-                }
-
-                bool anyDataReceived = false;
-                bytesInPacket = 0;
-                node = _queue.First;
-                Memory<byte> buffer = _buffer;
-                LinkedListNodeOfQueueItem? next;
-                while (node is not null)
-                {
-                    next = node.Next;
-
-                    byte fragment = node.ValueRef.Fragment;
-                    KcpBuffer data = node.ValueRef.Data;
-
-                    int sizeToCopy = Math.Min(data.Length, buffer.Length);
-                    data.DataRegion.Slice(0, sizeToCopy).CopyTo(buffer);
-                    buffer = buffer.Slice(sizeToCopy);
-                    bytesInPacket += sizeToCopy;
-                    anyDataReceived = true;
-
-                    if (sizeToCopy != data.Length)
-                    {
-                        // partial data is received.
-                        node.ValueRef = (data.Advance(sizeToCopy), node.ValueRef.Fragment);
-                    }
-                    else
-                    {
-                        // full fragment is consumed
-                        data.Release();
-                        _queue.Remove(node);
-                        _recycled.AddLast(node);
-                        if (fragment == 0)
-                        {
-                            _completedPacketsCount--;
-                        }
-                    }
-
-                    if (!_stream && fragment == 0)
-                    {
-                        break;
-                    }
-
-                    if (sizeToCopy == 0)
-                    {
-                        break;
-                    }
-
-                    node = next;
-                }
-
-                ClearPreviousOperation();
-                if (!anyDataReceived)
-                {
-                    result = default;
-                    exception = default;
-                    return true;
+                    result = new KcpConversationReceiveResult(bytesRecevied);
                 }
                 else
                 {
-                    result = new KcpConversationReceiveResult(bytesInPacket);
-                    exception = default;
-                    return true;
+                    result = default;
+                }
+                bufferTooSmall = false;
+                return;
+            }
+
+            // ensure buffer is big enough
+            int bytesInPacket = 0;
+            if (!_stream)
+            {
+                while (node is not null)
+                {
+                    bytesInPacket += node.ValueRef.Data.Length;
+                    if (node.ValueRef.Fragment == 0)
+                    {
+                        break;
+                    }
+                    node = node.Next;
+                }
+
+                if (node is null)
+                {
+                    // incomplete packet
+                    result = default;
+                    bufferTooSmall = false;
+                    return;
+                }
+
+                if (bytesInPacket > _buffer.Length)
+                {
+                    result = default;
+                    bufferTooSmall = true;
+                    return;
                 }
             }
 
-            result = default;
-            exception = default;
-            return false;
+            bool anyDataReceived = false;
+            bytesInPacket = 0;
+            node = _queue.First;
+            Memory<byte> buffer = _buffer;
+            LinkedListNodeOfQueueItem? next;
+            while (node is not null)
+            {
+                next = node.Next;
+
+                byte fragment = node.ValueRef.Fragment;
+                KcpBuffer data = node.ValueRef.Data;
+
+                int sizeToCopy = Math.Min(data.Length, buffer.Length);
+                data.DataRegion.Slice(0, sizeToCopy).CopyTo(buffer);
+                buffer = buffer.Slice(sizeToCopy);
+                bytesInPacket += sizeToCopy;
+                anyDataReceived = true;
+
+                if (sizeToCopy != data.Length)
+                {
+                    // partial data is received.
+                    node.ValueRef = (data.Advance(sizeToCopy), node.ValueRef.Fragment);
+                }
+                else
+                {
+                    // full fragment is consumed
+                    data.Release();
+                    _queue.Remove(node);
+                    _recycled.AddLast(node);
+                    if (fragment == 0)
+                    {
+                        _completedPacketsCount--;
+                    }
+                }
+
+                if (!_stream && fragment == 0)
+                {
+                    break;
+                }
+
+                if (sizeToCopy == 0)
+                {
+                    break;
+                }
+
+                node = next;
+            }
+
+            if (!anyDataReceived)
+            {
+                result = default;
+                bufferTooSmall = false;
+            }
+            else
+            {
+                result = new KcpConversationReceiveResult(bytesInPacket);
+                bufferTooSmall = false;
+            }
         }
 
         private static bool CalculatePacketSize(LinkedListNodeOfQueueItem first, out int packetSize)
