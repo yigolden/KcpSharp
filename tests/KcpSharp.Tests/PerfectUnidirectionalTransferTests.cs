@@ -25,7 +25,7 @@ namespace KcpSharp.Tests
 
                 byte[] data1 = new byte[4096];
                 Random.Shared.NextBytes(data1);
-                await pipe.Alice.SendAsync(data1, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(data1, cancellationToken));
 
                 if (waitToReceive)
                 {
@@ -61,7 +61,7 @@ namespace KcpSharp.Tests
 
                 byte[] data1 = new byte[4096];
                 Random.Shared.NextBytes(data1);
-                await pipe.Alice.SendAsync(data1, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(data1, cancellationToken));
 
                 await Task.Delay(500, cancellationToken);
 
@@ -88,7 +88,7 @@ namespace KcpSharp.Tests
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
 
-                await pipe.Alice.SendAsync(default, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(default, cancellationToken));
                 KcpConversationReceiveResult result;
                 if (waitToReceive)
                 {
@@ -113,7 +113,7 @@ namespace KcpSharp.Tests
                 Task<KcpConversationReceiveResult> receiveTask = pipe.Bob.ReceiveAsync(default, cancellationToken).AsTask();
                 await Task.Delay(500, cancellationToken);
                 Assert.False(receiveTask.IsCompleted);
-                await pipe.Alice.SendAsync(new byte[100], cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(new byte[100], cancellationToken));
                 await Task.Delay(500, cancellationToken);
                 Assert.True(receiveTask.IsCompleted);
                 KcpConversationReceiveResult result = await receiveTask;
@@ -135,9 +135,9 @@ namespace KcpSharp.Tests
                 byte[] buffer = new byte[2000];
                 Random.Shared.NextBytes(buffer);
 
-                await pipe.Alice.SendAsync(buffer.AsMemory(0, 1000), cancellationToken);
-                await pipe.Alice.SendAsync(default, cancellationToken);
-                await pipe.Alice.SendAsync(buffer.AsMemory(1000, 1000), cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(buffer.AsMemory(0, 1000), cancellationToken));
+                Assert.True(await pipe.Alice.SendAsync(default, cancellationToken));
+                Assert.True(await pipe.Alice.SendAsync(buffer.AsMemory(1000, 1000), cancellationToken));
 
                 byte[] buffer2 = new byte[3000];
                 int bytesRead = 0;
@@ -192,7 +192,7 @@ namespace KcpSharp.Tests
             {
                 foreach (byte[] packet in packets)
                 {
-                    await conversation.SendAsync(packet, cancellationToken);
+                    Assert.True(await conversation.SendAsync(packet, cancellationToken));
                 }
             }
 
@@ -237,7 +237,7 @@ namespace KcpSharp.Tests
 
                 byte[] bigFile = new byte[fileSize];
                 Random.Shared.NextBytes(bigFile);
-                Task sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
+                Task<bool> sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
 
                 ReadOnlyMemory<byte> remainingFile = bigFile;
                 byte[] buffer = new byte[receiveBufferSize];
@@ -258,7 +258,7 @@ namespace KcpSharp.Tests
                     remainingFile = remainingFile.Slice(result.BytesReceived);
                 }
 
-                await sendTask;
+                Assert.True(await sendTask);
 
                 await AssertReceiveNoDataAsync(pipe.Bob, waitToReceive, buffer);
             });
@@ -277,7 +277,7 @@ namespace KcpSharp.Tests
 
                 byte[] buffer = new byte[256 * mss];
                 Random.Shared.NextBytes(buffer);
-                await pipe.Alice.SendAsync(buffer, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(buffer, cancellationToken));
 
                 KcpConversationReceiveResult result;
                 if (waitToReceive)

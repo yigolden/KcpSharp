@@ -58,7 +58,7 @@ namespace KcpSharp.Tests
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
 
-                await pipe.Alice.SendAsync(default, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(default, cancellationToken));
                 await Task.Delay(500, cancellationToken);
 
                 KcpConversationReceiveResult result;
@@ -88,7 +88,7 @@ namespace KcpSharp.Tests
                 byte[] packet = new byte[packetSize];
                 Random.Shared.NextBytes(packet);
 
-                await pipe.Alice.SendAsync(packet, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(packet, cancellationToken));
                 await Task.Delay(2000, cancellationToken);
 
                 KcpConversationReceiveResult result;
@@ -120,7 +120,7 @@ namespace KcpSharp.Tests
                 byte[] packet = new byte[packetSize];
                 Random.Shared.NextBytes(packet);
 
-                await pipe.Alice.SendAsync(packet, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(packet, cancellationToken));
                 await Task.Delay(2000, cancellationToken);
 
                 KcpConversationReceiveResult result;
@@ -149,9 +149,9 @@ namespace KcpSharp.Tests
                 Random.Shared.NextBytes(packet2);
                 Random.Shared.NextBytes(packet3);
 
-                await pipe.Alice.SendAsync(packet1, cancellationToken);
-                await pipe.Alice.SendAsync(packet2, cancellationToken);
-                await pipe.Alice.SendAsync(packet3, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(packet1, cancellationToken));
+                Assert.True(await pipe.Alice.SendAsync(packet2, cancellationToken));
+                Assert.True(await pipe.Alice.SendAsync(packet3, cancellationToken));
 
                 await Task.Delay(2000);
 
@@ -187,7 +187,7 @@ namespace KcpSharp.Tests
                 byte[] stream = new byte[4000];
                 Random.Shared.NextBytes(stream);
 
-                await pipe.Alice.SendAsync(stream, cancellationToken);
+                Assert.True(await pipe.Alice.SendAsync(stream, cancellationToken));
 
                 await Task.Delay(2000, cancellationToken);
 

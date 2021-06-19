@@ -51,7 +51,7 @@ namespace KcpSharp
             _ = Task.Run(() => SendLoopAsync(_sendLoopCts));
         }
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendOperation.SendAsync(buffer, cancellationToken);
 
         private async Task SendLoopAsync(CancellationTokenSource cts)

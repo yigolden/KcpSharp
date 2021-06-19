@@ -90,7 +90,10 @@ namespace KcpSharp.ThroughputBanchmarks.StreamThroughputBenchmark
             byte[] packet = new byte[bufferSize];
             while (!cancellationToken.IsCancellationRequested)
             {
-                await conversation.SendAsync(packet, cancellationToken);
+                if (!await conversation.SendAsync(packet, cancellationToken))
+                {
+                    break;
+                }
                 Interlocked.Add(ref _bytesTransmitted, bufferSize);
             }
         }

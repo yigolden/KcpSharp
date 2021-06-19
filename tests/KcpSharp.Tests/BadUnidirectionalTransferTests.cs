@@ -71,7 +71,7 @@ namespace KcpSharp.Tests
             {
                 foreach (byte[] packet in packets)
                 {
-                    await conversation.SendAsync(packet, cancellationToken);
+                    Assert.True(await conversation.SendAsync(packet, cancellationToken));
                 }
             }
 
@@ -133,7 +133,7 @@ namespace KcpSharp.Tests
 
                 byte[] bigFile = new byte[fileSize];
                 Random.Shared.NextBytes(bigFile);
-                Task sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
+                Task<bool> sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
 
                 ReadOnlyMemory<byte> remainingFile = bigFile;
                 byte[] buffer = new byte[receiveBufferSize];
@@ -154,7 +154,7 @@ namespace KcpSharp.Tests
                     remainingFile = remainingFile.Slice(result.BytesReceived);
                 }
 
-                await sendTask;
+                Assert.True(await sendTask);
 
                 await AssertReceiveNoDataAsync(pipe.Bob, waitToReceive, buffer);
             });

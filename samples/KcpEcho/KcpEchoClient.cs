@@ -53,7 +53,10 @@ namespace KcpEcho
                 try
                 {
                     length = Encoding.UTF8.GetBytes(message, buffer);
-                    await conversation.SendAsync(buffer.AsMemory(0, length), cancellationToken);
+                    if (!await conversation.SendAsync(buffer.AsMemory(0, length), cancellationToken))
+                    {
+                        break;
+                    }
                 }
                 finally
                 {

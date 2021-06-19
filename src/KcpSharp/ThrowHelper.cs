@@ -4,10 +4,6 @@ namespace KcpSharp
 {
     internal static class ThrowHelper
     {
-        public static Exception NewTransportClosedException()
-        {
-            return new KcpException("The transport has already been closed.");
-        }
         public static Exception NewMessageTooLargeForBufferArgument()
         {
             return new ArgumentException("Message is too large.", "buffer");
@@ -35,6 +31,10 @@ namespace KcpSharp
         public static Exception NewObjectDisposedExceptionForKcpConversation()
         {
             return new ObjectDisposedException(nameof(KcpConversation));
+        }
+        public static Exception NewObjectDisposedExceptionForKcpRawChannel()
+        {
+            return new ObjectDisposedException(nameof(KcpRawChannel));
         }
     }
 }

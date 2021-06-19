@@ -5,7 +5,7 @@ using System.Threading.Tasks.Sources;
 
 namespace KcpSharp
 {
-    internal sealed class KcpRawSendOperation : IValueTaskSource, IDisposable
+    internal sealed class KcpRawSendOperation : IValueTaskSource<bool>, IDisposable
     {
         private readonly AsyncAutoResetEvent<int> _notification;
         private ManualResetValueTaskSourceCore<bool> _mrvtsc;
@@ -28,30 +28,30 @@ namespace KcpSharp
             };
         }
 
-        void IValueTaskSource.GetResult(short token) => _mrvtsc.GetResult(token);
-        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
+        bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
+        ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
+        void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
         {
             short token;
             lock (this)
             {
                 if (_disposed)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpRawChannel()));
                 }
                 if (_transportClosed)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedException()));
+                    return new ValueTask<bool>(false);
                 }
                 if (_operationOngoing)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return new ValueTask(Task.FromCanceled(cancellationToken));
+                    return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
 
                 _mrvtsc.Reset();
@@ -64,7 +64,7 @@ namespace KcpSharp
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpRawSendOperation?)state)!.SetCanceled(), this);
 
             _notification.Set(buffer.Length);
-            return new ValueTask(this, token);
+            return new ValueTask<bool>(this, token);
 
         }
 
@@ -131,7 +131,7 @@ namespace KcpSharp
                 if (_operationOngoing)
                 {
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewTransportClosedException());
+                    _mrvtsc.SetResult(false);
                 }
                 _transportClosed = true;
             }
@@ -148,7 +148,7 @@ namespace KcpSharp
                 if (_operationOngoing)
                 {
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewTransportClosedException());
+                    _mrvtsc.SetResult(false);
                 }
                 _disposed = true;
                 _transportClosed = true;

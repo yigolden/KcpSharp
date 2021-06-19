@@ -14,7 +14,7 @@ using LinkedListNodeOfQueueItem = System.Collections.Generic.LinkedListNode<(Kcp
 
 namespace KcpSharp
 {
-    internal sealed class KcpSendQueue : IValueTaskSource, IDisposable
+    internal sealed class KcpSendQueue : IValueTaskSource<bool>, IDisposable
     {
         private readonly IKcpBufferAllocator _allocator;
         private readonly KcpConversationUpdateNotification _updateNotification;
@@ -50,31 +50,31 @@ namespace KcpSharp
             _recycled = new LinkedListOfQueueItem();
         }
 
-        void IValueTaskSource.GetResult(short token) => _mrvtsc.GetResult(token);
-        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+        bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
+        ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
+        void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
         {
             short token;
             lock (_queue)
             {
                 if (_disposed)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
                 }
                 if (_transportClosed)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedException()));
+                    return new ValueTask<bool>(false);
                 }
                 if (_operationOngoing)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return new ValueTask(Task.FromCanceled(cancellationToken));
+                    return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
 
                 int mss = _mss;
@@ -95,7 +95,7 @@ namespace KcpSharp
 
                     if (buffer.IsEmpty)
                     {
-                        return default;
+                        return new ValueTask<bool>(true);
                     }
                 }
 
@@ -104,7 +104,7 @@ namespace KcpSharp
 
                 if (!_stream && count > 256)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewMessageTooLargeForBufferArgument()));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewMessageTooLargeForBufferArgument()));
                 }
 
                 // synchronously put fragments into queue.
@@ -123,7 +123,7 @@ namespace KcpSharp
 
                 if (count == 0)
                 {
-                    return default;
+                    return new ValueTask<bool>(true);
                 }
 
                 _mrvtsc.Reset();
@@ -135,7 +135,7 @@ namespace KcpSharp
 
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
 
-            return new ValueTask(this, token);
+            return new ValueTask<bool>(this, token);
         }
 
         private LinkedListNodeOfQueueItem AllocateNode(KcpBuffer data, byte fragment)
@@ -231,7 +231,7 @@ namespace KcpSharp
                 if (_operationOngoing)
                 {
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewTransportClosedException());
+                    _mrvtsc.SetResult(false);
                 }
                 _recycled.Clear();
                 _transportClosed = true;
@@ -249,7 +249,7 @@ namespace KcpSharp
                 if (_operationOngoing)
                 {
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewTransportClosedException());
+                    _mrvtsc.SetResult(false);
                 }
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 while (node is not null)

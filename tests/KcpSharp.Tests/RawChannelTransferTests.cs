@@ -42,7 +42,7 @@ namespace KcpSharp.Tests
             {
                 foreach (byte[] packet in packets)
                 {
-                    await conversation.SendAsync(packet, cancellationToken);
+                    Assert.True(await conversation.SendAsync(packet, cancellationToken));
                 }
             }
 

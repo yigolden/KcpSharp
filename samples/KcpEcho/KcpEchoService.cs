@@ -60,7 +60,10 @@ namespace KcpEcho
 
                         Console.WriteLine($"Message received from {_endPoint}. Length = {result.BytesReceived} bytes.");
 
-                        await _conversation.SendAsync(buffer.AsMemory(0, result.BytesReceived), cancellationToken);
+                        if (await _conversation.SendAsync(buffer.AsMemory(0, result.BytesReceived), cancellationToken))
+                        {
+                            break;
+                        }
                     }
                     finally
                     {

@@ -104,7 +104,7 @@ namespace KcpSharp.Tests
                     byte[] buffer = useEmptyBuffer ? Array.Empty<byte>() : new byte[4096];
                     using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
                     conversation.SetTransportClosed();
-                    await Assert.ThrowsAsync<KcpException>(async () => await conversation.SendAsync(buffer, cancellationToken));
+                    Assert.False(await conversation.SendAsync(buffer, cancellationToken));
                 }
                 Assert.Equal(0, trackedAllocator.InuseBufferCount);
             });
@@ -124,20 +124,24 @@ namespace KcpSharp.Tests
                 {
                     using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = queueSize, SendWindow = sendWindowSize });
                     Task unregisterTask = Task.Run(async () => { await Task.Delay(500); conversation.SetTransportClosed(); });
-                    await Assert.ThrowsAsync<KcpException>(async () => await SendMultiplePacketsAsync(conversation, packetCount, cancellationToken));
+                    Assert.False(await SendMultiplePacketsAsync(conversation, packetCount, cancellationToken));
                     await unregisterTask;
-                    await Assert.ThrowsAsync<KcpException>(async () => await SendMultiplePacketsAsync(conversation, packetCount, cancellationToken));
+                    Assert.False(await SendMultiplePacketsAsync(conversation, packetCount, cancellationToken));
                 }
                 Assert.Equal(0, trackedAllocator.InuseBufferCount);
             });
 
-            static async Task SendMultiplePacketsAsync(KcpConversation conversation, int packetCount, CancellationToken cancellationToken)
+            static async Task<bool> SendMultiplePacketsAsync(KcpConversation conversation, int packetCount, CancellationToken cancellationToken)
             {
-                var buffer = new byte[1000];
+                byte[] buffer = new byte[1000];
                 for (int i = 0; i < packetCount; i++)
                 {
-                    await conversation.SendAsync(buffer, cancellationToken);
+                    if (!await conversation.SendAsync(buffer, cancellationToken))
+                    {
+                        return false;
+                    }
                 }
+                return true;
             }
         }
 
@@ -153,13 +157,13 @@ namespace KcpSharp.Tests
 
                     byte[] bigFile = new byte[fileSize];
                     Random.Shared.NextBytes(bigFile);
-                    Task sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
-                    await Task.Delay(2000);
+                    Task<bool> sendTask = Task.Run(async () => await pipe.Alice.SendAsync(bigFile, cancellationToken));
+                    await Task.Delay(2000, cancellationToken);
 
                     pipe.Alice.SetTransportClosed();
                     pipe.Bob.SetTransportClosed();
 
-                    await Assert.ThrowsAsync<KcpException>(async () => await sendTask);
+                    Assert.False(await sendTask);
                 }
                 Assert.Equal(0, trackedAllocator.InuseBufferCount);
             });
@@ -184,24 +188,28 @@ namespace KcpSharp.Tests
                 {
                     using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
-                    Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
+                    Task<bool> sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                     await Task.Delay(2000, cancellationToken);
 
                     pipe.Alice.SetTransportClosed();
                     pipe.Bob.SetTransportClosed();
 
-                    await Assert.ThrowsAsync<KcpException>(async () => await sendTask);
+                    Assert.False(await sendTask);
                 }
                 Assert.Equal(0, trackedAllocator.InuseBufferCount);
             });
 
 
-            static async Task SendMultplePacketsAsync(KcpConversation conversation, IEnumerable<byte[]> packets, CancellationToken cancellationToken)
+            static async Task<bool> SendMultplePacketsAsync(KcpConversation conversation, IEnumerable<byte[]> packets, CancellationToken cancellationToken)
             {
                 foreach (byte[] packet in packets)
                 {
-                    await conversation.SendAsync(packet, cancellationToken);
+                    if (!await conversation.SendAsync(packet, cancellationToken))
+                    {
+                        return false;
+                    }
                 }
+                return true;
             }
 
         }

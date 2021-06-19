@@ -143,7 +143,17 @@ namespace KcpSharp
             _ = Task.Run(() => RunUpdateOnEventLoopAsync(_updateLoopCts));
         }
 
-        public ValueTask SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        /// <summary>
+        /// Put message into the send queue.
+        /// </summary>
+        /// <param name="buffer">The content of the message</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The send operation is initiated concurrently.</exception>
+        /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendQueue.SendAsync(buffer, cancellationToken);
 
         private int Check(uint current)
@@ -1058,6 +1068,7 @@ namespace KcpSharp
         /// Get the size of the next available message in the receive queue.
         /// </summary>
         /// <param name="result">The transport state and the size of the next available message.</param>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>True if the receive queue contains at least one message. False if the receive queue is empty or the transport is closed.</returns>
         public bool TryPeek(out KcpConversationReceiveResult result)
             => _receiveQueue.TryPeek(out result);
@@ -1068,6 +1079,7 @@ namespace KcpSharp
         /// <param name="buffer">The buffer to receive message.</param>
         /// <param name="result">The transport state and the count of bytes moved into <paramref name="buffer"/>.</param>
         /// <exception cref="ArgumentException">The size of the next available message is larger than the size of <paramref name="buffer"/>. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="InvalidOperationException">The receiveor peek operation is initiated concurrently.</exception>
         /// <returns>True if the next available message is moved into <paramref name="buffer"/>. False if the receive queue is empty or the transport is closed.</returns>
         public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
             => _receiveQueue.TryReceive(buffer, out result);
