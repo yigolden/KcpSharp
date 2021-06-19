@@ -134,7 +134,7 @@ namespace KcpSharp
                     int length = source.Length;
                     if (buffer.Length < source.Length)
                     {
-                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmall()));
+                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmallForBufferArgument()));
                     }
                     _queue.Remove(first);
 
@@ -220,7 +220,7 @@ namespace KcpSharp
                     _queue.AddLast(AllocateNode(KcpBuffer.CreateFromSpan(owner, buffer)));
 
                     ClearPreviousOperation();
-                    _mrvtsc.SetException(ThrowHelper.NewBufferTooSmall());
+                    _mrvtsc.SetException(ThrowHelper.NewBufferTooSmallForBufferArgument());
                     return;
                 }
 

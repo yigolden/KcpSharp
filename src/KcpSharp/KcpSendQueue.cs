@@ -104,7 +104,7 @@ namespace KcpSharp
 
                 if (!_stream && count > 256)
                 {
-                    return new ValueTask(Task.FromException(ThrowHelper.NewMessageTooLarge()));
+                    return new ValueTask(Task.FromException(ThrowHelper.NewMessageTooLargeForBufferArgument()));
                 }
 
                 // synchronously put fragments into queue.

@@ -1067,7 +1067,7 @@ namespace KcpSharp
         /// </summary>
         /// <param name="buffer">The buffer to receive message.</param>
         /// <param name="result">The transport state and the count of bytes moved into <paramref name="buffer"/>.</param>
-        /// <exception cref="InvalidOperationException">The size of the next available message is larger than the size of <paramref name="buffer"/>. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="ArgumentException">The size of the next available message is larger than the size of <paramref name="buffer"/>. This exception is never thrown in stream mode.</exception>
         /// <returns>True if the next available message is moved into <paramref name="buffer"/>. False if the receive queue is empty or the transport is closed.</returns>
         public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
             => _receiveQueue.TryReceive(buffer, out result);

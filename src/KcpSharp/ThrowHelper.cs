@@ -8,17 +8,17 @@ namespace KcpSharp
         {
             return new KcpException("The transport has already been closed.");
         }
-        public static Exception NewMessageTooLarge()
+        public static Exception NewMessageTooLargeForBufferArgument()
         {
-            return new InvalidOperationException("Message is too large.");
+            return new ArgumentException("Message is too large.", "buffer");
         }
-        public static Exception NewBufferTooSmall()
+        public static Exception NewBufferTooSmallForBufferArgument()
         {
-            return new InvalidOperationException("Buffer is too small.");
+            return new ArgumentException("Buffer is too small.", "buffer");
         }
         public static Exception ThrowBufferTooSmall()
         {
-            throw new InvalidOperationException("Buffer is too small.");
+            throw new ArgumentException("Buffer is too small.", "buffer");
         }
         public static Exception NewConcurrentSendException()
         {

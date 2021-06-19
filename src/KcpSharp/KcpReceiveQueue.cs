@@ -121,7 +121,8 @@ namespace KcpSharp
                     ClearPreviousOperation();
                     if (bufferTooSmall)
                     {
-                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmall()));
+                        Debug.Assert(false, "This should never be reached.");
+                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmallForBufferArgument()));
                     }
                     else
                     {
@@ -205,7 +206,7 @@ namespace KcpSharp
                     ClearPreviousOperation();
                     if (bufferTooSmall)
                     {
-                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmall()));
+                        return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewBufferTooSmallForBufferArgument()));
                     }
                     else
                     {
@@ -278,7 +279,7 @@ namespace KcpSharp
                         ClearPreviousOperation();
                         if (bufferTooSmall)
                         {
-                            _mrvtsc.SetException(ThrowHelper.NewBufferTooSmall());
+                            _mrvtsc.SetException(ThrowHelper.NewBufferTooSmallForBufferArgument());
                         }
                         else
                         {

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,8 +73,8 @@ namespace KcpSharp.Tests
                 }
                 else
                 {
-                    InvalidOperationException exception = await Assert.ThrowsAsync<InvalidOperationException>(() => receiveTask);
-                    Assert.Equal("Buffer is too small.", exception.Message);
+                    ArgumentException exception = await Assert.ThrowsAsync<ArgumentException>("buffer", () => receiveTask);
+                    Assert.StartsWith("Buffer is too small.", exception.Message);
                 }
             });
         }
@@ -288,8 +287,8 @@ namespace KcpSharp.Tests
                     Assert.Equal(buffer.Length, result.BytesReceived);
                 }
 
-                InvalidOperationException exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(async () => await pipe.Bob.ReceiveAsync(new byte[100], cancellationToken));
-                Assert.Equal("Buffer is too small.", exception.Message);
+                ArgumentException exception = await Assert.ThrowsAsync<ArgumentException>("buffer", async () => await pipe.Bob.ReceiveAsync(new byte[100], cancellationToken));
+                Assert.StartsWith("Buffer is too small.", exception.Message);
 
                 byte[] buffer2 = new byte[buffer.Length + 100];
                 result = await pipe.Bob.ReceiveAsync(buffer2, cancellationToken);
@@ -300,8 +299,9 @@ namespace KcpSharp.Tests
 
                 // larger message should not be sent
                 buffer = new byte[buffer.Length + 1];
-                exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await pipe.Alice.SendAsync(buffer, cancellationToken));
-                Assert.Equal("Message is too large.", exception.Message);
+                exception = await Assert.ThrowsAsync<ArgumentException>("buffer", async () => await pipe.Alice.SendAsync(buffer, cancellationToken));
+                Assert.StartsWith("Message is too large.", exception.Message);
+
             });
         }
 

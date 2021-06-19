@@ -107,6 +107,33 @@ namespace KcpSharp.Tests
             });
         }
 
+        [InlineData(100)]
+        [InlineData(400)]
+        [InlineData(256 * 100)]
+        [Theory]
+        public Task TestPacketReceiveBufferTooSmall(int packetSize)
+        {
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
+            {
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 124, UpdateInterval = 30, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
+
+                byte[] packet = new byte[packetSize];
+                Random.Shared.NextBytes(packet);
+
+                await pipe.Alice.SendAsync(packet, cancellationToken);
+                await Task.Delay(2000, cancellationToken);
+
+                KcpConversationReceiveResult result;
+                Assert.True(pipe.Bob.TryPeek(out result));
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
+                Assert.Equal(packetSize, result.BytesReceived);
+
+                byte[] buffer = new byte[packetSize - 1];
+                ArgumentException exception = Assert.Throws<ArgumentException>("buffer", () => pipe.Bob.TryReceive(buffer, out result));
+                Assert.StartsWith("Buffer is too small.", exception.Message);
+            });
+        }
+
         [Fact]
         public Task TestMultiplePacketsReceive()
         {
