@@ -257,6 +257,11 @@ namespace KcpSharp
         #endregion
 
         /// <summary>
+        /// Get the ID of the current conversation.
+        /// </summary>
+        public int ConversationId => (int)_id;
+
+        /// <summary>
         /// Get whether the transport is marked as closed.
         /// </summary>
         public bool TransportClosed => _transportClosed;
