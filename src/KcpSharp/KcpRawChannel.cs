@@ -51,6 +51,16 @@ namespace KcpSharp
             _ = Task.Run(() => SendLoopAsync(_sendLoopCts));
         }
 
+        /// <summary>
+        /// Get the ID of the current conversation.
+        /// </summary>
+        public int ConversationId => (int)_id;
+
+        /// <summary>
+        /// Get whether the transport is marked as closed.
+        /// </summary>
+        public bool TransportClosed => _sendLoopCts is null;
+
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendOperation.SendAsync(buffer, cancellationToken);
 
