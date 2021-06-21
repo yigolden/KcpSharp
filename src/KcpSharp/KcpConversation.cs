@@ -75,6 +75,9 @@ namespace KcpSharp
         private bool _transportClosed;
         private bool _disposed;
 
+        private Func<Exception, KcpConversation, object?, bool>? _exceptionHandler;
+        private object? _exceptionHandlerState;
+
         private const uint IKCP_RTO_MAX = 60000;
         private const int IKCP_THRESH_MIN = 2;
         private const uint IKCP_PROBE_INIT = 7000;       // 7 secs to probe window size
@@ -141,6 +144,122 @@ namespace KcpSharp
             _ = Task.Run(() => CheckAndSignalLoopAsync(_checkLoopCts));
             _ = Task.Run(() => RunUpdateOnEventLoopAsync(_updateLoopCts));
         }
+
+        #region Exception handlers
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        /// <param name="state">The state object to pass into the exception handler.</param>
+        public void SetExceptionHandler(Func<Exception, KcpConversation, object?, bool> handler, object? state)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = handler;
+            _exceptionHandlerState = state;
+        }
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        public void SetExceptionHandler(Func<Exception, KcpConversation, bool> handler)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = (ex, conv, state) => ((Func<Exception, KcpConversation, bool>?)state)!.Invoke(ex, conv);
+            _exceptionHandlerState = handler;
+        }
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        public void SetExceptionHandler(Func<Exception, bool> handler)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = (ex, conv, state) => ((Func<Exception, bool>?)state)!.Invoke(ex);
+            _exceptionHandlerState = handler;
+        }
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        /// <param name="state">The state object to pass into the exception handler.</param>
+        public void SetExceptionHandler(Action<Exception, KcpConversation, object?> handler, object? state)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = (ex, conv, state) =>
+            {
+                var tuple = (Tuple<Action<Exception, KcpConversation, object?>, object?>)state!;
+                tuple.Item1.Invoke(ex, conv, tuple.Item2);
+                return false;
+            };
+            _exceptionHandlerState = Tuple.Create(handler, state);
+        }
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        public void SetExceptionHandler(Action<Exception, KcpConversation> handler)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = (ex, conv, state) =>
+            {
+                var handler = (Action<Exception, KcpConversation>)state!;
+                handler.Invoke(ex, conv);
+                return false;
+            };
+            _exceptionHandlerState = handler;
+        }
+
+        /// <summary>
+        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
+        /// </summary>
+        /// <param name="handler">The exception handler.</param>
+        public void SetExceptionHandler(Action<Exception> handler)
+        {
+            if (handler is null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            _exceptionHandler = (ex, conv, state) =>
+            {
+                var handler = (Action<Exception>)state!;
+                handler.Invoke(ex);
+                return false;
+            };
+            _exceptionHandlerState = handler;
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Get whether the transport is marked as closed.
+        /// </summary>
+        public bool TransportClosed => _transportClosed;
 
         /// <summary>
         /// Put message into the send queue.
@@ -565,7 +684,17 @@ namespace KcpSharp
                     }
 
                     current = _current = GetTimestamp();
-                    await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (HandleFlushException(ex))
+                        {
+                            continue;
+                        }
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -607,6 +736,23 @@ namespace KcpSharp
                 return new ValueTask(FlushCoreAsync(cancellationToken));
             }
             return default;
+        }
+
+        private bool HandleFlushException(Exception ex)
+        {
+            Func<Exception, KcpConversation, object?, bool>? handler = _exceptionHandler;
+            object? state = _exceptionHandlerState;
+            bool result = false;
+            if (handler is not null)
+            {
+                result = handler.Invoke(ex, this, state);
+            }
+
+            if (!result)
+            {
+                SetTransportClosed();
+            }
+            return result;
         }
 
         public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
