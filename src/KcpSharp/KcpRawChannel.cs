@@ -14,9 +14,9 @@ namespace KcpSharp
         private readonly int _mtu;
 
         private CancellationTokenSource? _sendLoopCts;
-        private KcpRawReceiveQueue _receiveQueue;
-        private KcpRawSendOperation _sendOperation;
-        private AsyncAutoResetEvent<int> _sendNotification;
+        private readonly KcpRawReceiveQueue _receiveQueue;
+        private readonly KcpRawSendOperation _sendOperation;
+        private readonly AsyncAutoResetEvent<int> _sendNotification;
 
         private Func<Exception, KcpRawChannel, object?, bool>? _exceptionHandler;
         private object? _exceptionHandlerState;

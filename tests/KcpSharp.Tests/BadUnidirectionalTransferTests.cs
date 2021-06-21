@@ -45,7 +45,7 @@ namespace KcpSharp.Tests
         public Task TestMultiplePacketSendReceive(int packetCount, int minPacketSize, int maxPacketSize, double drop, int latency, int delay, bool waitToReceive)
         {
             Assert.True(minPacketSize <= maxPacketSize);
-            List<byte[]> packets = new List<byte[]>(
+            List<byte[]> packets = new(
                 Enumerable.Range(1, packetCount)
                 .Select(i => new byte[Random.Shared.Next(minPacketSize, maxPacketSize + 1)])
                 );
@@ -54,7 +54,7 @@ namespace KcpSharp.Tests
                 Random.Shared.NextBytes(packet);
             }
 
-            KcpConversationOptions options = new KcpConversationOptions { SendQueueSize = 8, SendWindow = 12, ReceiveWindow = 12, UpdateInterval = 30 };
+            KcpConversationOptions options = new() { SendQueueSize = 8, SendWindow = 12, ReceiveWindow = 12, UpdateInterval = 30 };
             var connectionOptions = new BadOneWayConnectionOptions { DropProbability = drop, BaseLatency = latency, RandomRelay = delay, ConcurrentCount = 12, Random = new Random(42) };
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(180), async cancellationToken =>
             {
@@ -125,7 +125,7 @@ namespace KcpSharp.Tests
         public Task TestBigFileStreamSendReceive(int fileSize, double drop, int latency, int delay, int receiveBufferSize, bool waitToReceive)
         {
             Assert.True(receiveBufferSize < fileSize);
-            KcpConversationOptions options = new KcpConversationOptions { SendQueueSize = 32, SendWindow = 16, ReceiveWindow = 16, UpdateInterval = 30, StreamMode = true };
+            KcpConversationOptions options = new() { SendQueueSize = 32, SendWindow = 16, ReceiveWindow = 16, UpdateInterval = 30, StreamMode = true };
             var connectionOptions = new BadOneWayConnectionOptions { DropProbability = drop, BaseLatency = latency, RandomRelay = delay, ConcurrentCount = 12, Random = new Random(42) };
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(150), async cancellationToken =>
             {
@@ -162,7 +162,7 @@ namespace KcpSharp.Tests
 
         private static async Task AssertReceiveNoDataAsync(KcpConversation conversation, bool waitToReceive, byte[]? buffer = null)
         {
-            buffer = buffer ?? new byte[1];
+            buffer ??= new byte[1];
 
             if (waitToReceive)
             {

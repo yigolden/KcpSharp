@@ -173,7 +173,7 @@ namespace KcpSharp.Tests
         [Theory]
         public Task TransferPacketsBeforeTransportClosed(int packetCount, int packetSize)
         {
-            List<byte[]> packets = new List<byte[]>(
+            List<byte[]> packets = new(
                 Enumerable.Range(1, packetCount)
                 .Select(i => new byte[packetSize])
                 );

@@ -14,7 +14,7 @@ namespace KcpSharp.Tests
         [Theory]
         public Task TestMultiplePacketSendReceive(int packetCount, int minPacketSize, int maxPacketSize, bool waitToReceive)
         {
-            List<byte[]> packets = new List<byte[]>(
+            List<byte[]> packets = new(
                Enumerable.Range(1, packetCount)
                .Select(i => new byte[Random.Shared.Next(minPacketSize, maxPacketSize + 1)])
                );

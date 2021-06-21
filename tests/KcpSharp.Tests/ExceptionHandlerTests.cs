@@ -25,7 +25,7 @@ namespace KcpSharp.Tests
 
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
-                object obj = new object();
+                object obj = new();
 
                 using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
@@ -38,7 +38,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 }, obj);
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -86,7 +86,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -133,7 +133,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -168,7 +168,7 @@ namespace KcpSharp.Tests
 
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
-                object obj = new object();
+                object obj = new();
 
                 using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
@@ -180,7 +180,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(obj, state));
                 }, obj);
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -216,7 +216,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(conversation, conv));
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -251,7 +251,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(exception, ex));
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = conversation.SendAsync(default, cancellationToken).AsTask();
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));

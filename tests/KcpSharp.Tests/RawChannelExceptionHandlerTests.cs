@@ -32,7 +32,7 @@ namespace KcpSharp.Tests
 
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
-                object obj = new object();
+                object obj = new();
 
                 using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
@@ -175,7 +175,7 @@ namespace KcpSharp.Tests
 
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
-                object obj = new object();
+                object obj = new();
 
                 using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
