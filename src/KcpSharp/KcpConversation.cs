@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,8 +62,7 @@ namespace KcpSharp
         private readonly LinkedListOfBufferItem _rcvBuf = new();
         private KcpSendReceiveBufferItemCache _cache = KcpSendReceiveBufferItemCache.Create();
 
-        private readonly List<(uint SerialNumber, uint Timestamp)> _ackList = new();
-        private SpinLock _ackListLock;
+        private readonly KcpAcknowledgeList _ackList;
 
         private int _fastresend;
         private int _fastlimit;
@@ -130,6 +128,7 @@ namespace KcpSharp
 
             _dead_link = 20;
 
+            _ackList = new KcpAcknowledgeList((int)_snd_wnd);
             _updateEvent = new KcpConversationUpdateNotification();
             _sendQueue = new KcpSendQueue(_allocator, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss);
             _receiveQueue = new KcpReceiveQueue(_stream);
@@ -225,32 +224,9 @@ namespace KcpSharp
 
             // flush acknowledges
             {
-                bool lockTaken;
-                int count, index = 0;
-                while (true)
+                int index = 0;
+                while (_ackList.TryGetAt(index++, out uint serialNumber, out uint timestamp))
                 {
-                    uint serialNumber, timestamp;
-
-                    lockTaken = false;
-                    try
-                    {
-                        _ackListLock.Enter(ref lockTaken);
-
-                        count = _ackList.Count;
-                        if (index >= count)
-                        {
-                            break;
-                        }
-                        (serialNumber, timestamp) = _ackList[index++];
-                    }
-                    finally
-                    {
-                        if (lockTaken)
-                        {
-                            _ackListLock.Exit();
-                        }
-                    }
-
                     if ((size + 24) > _mtu)
                     {
                         await _connection.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
@@ -261,20 +237,7 @@ namespace KcpSharp
                     size += 24;
                 }
 
-                lockTaken = false;
-                try
-                {
-                    _ackListLock.Enter(ref lockTaken);
-
-                    _ackList.Clear();
-                }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _ackListLock.Exit();
-                    }
-                }
+                _ackList.Clear();
             }
 
             uint current = _current = GetTimestamp();
@@ -1024,23 +987,7 @@ namespace KcpSharp
 
         }
 
-        private void AckPush(uint serialNumber, uint timestamp)
-        {
-            bool lockTake = false;
-            try
-            {
-                _ackListLock.Enter(ref lockTake);
-
-                _ackList.Add((serialNumber, timestamp));
-            }
-            finally
-            {
-                if (lockTake)
-                {
-                    _ackListLock.Exit();
-                }
-            }
-        }
+        private void AckPush(uint serialNumber, uint timestamp) => _ackList.Add(serialNumber, timestamp);
 
         private void HandleFastAck(uint serialNumber, uint timestamp)
         {
