@@ -27,8 +27,9 @@ namespace KcpSharp.Tests
             {
                 using KcpRawDuplexChannel pipe = KcpRawDuplexChannelFactory.CreateDuplexChannel(new KcpRawChannelOptions { ReceiveQueueSize = packetCount });
 
-                Assert.False(pipe.Bob.TryPeek(out int packetSize));
-                Assert.Equal(0, packetSize);
+                Assert.False(pipe.Bob.TryPeek(out KcpConversationReceiveResult result));
+                Assert.False(result.TransportClosed, "Transport should not be closed.");
+                Assert.Equal(0, result.BytesReceived);
 
                 Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                 Task receiveTask = ReceiveMultiplePacketsAsync(pipe.Bob, packets, waitToReceive, cancellationToken);
@@ -59,8 +60,9 @@ namespace KcpSharp.Tests
                         Assert.False(result.TransportClosed, "Transport should not be closed.");
                         Assert.Equal(packet.Length, result.BytesReceived);
 
-                        Assert.True(conversation.TryPeek(out int packetSize));
-                        Assert.Equal(packet.Length, packetSize);
+                        Assert.True(conversation.TryPeek(out result));
+                        Assert.False(result.TransportClosed, "Transport should not be closed.");
+                        Assert.Equal(packet.Length, result.BytesReceived);
                     }
 
                     result = await conversation.ReceiveAsync(buffer, cancellationToken);

@@ -274,12 +274,45 @@ namespace KcpSharp
             return default;
         }
 
-        public bool TryPeek(out int packetSize)
-            => _receiveQueue.TryPeek(out packetSize);
+        /// <summary>
+        /// Get the size of the next available message in the receive queue.
+        /// </summary>
+        /// <param name="result">The transport state and the size of the next available message.</param>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>True if the receive queue contains at least one message. False if the receive queue is empty or the transport is closed.</returns>
+        public bool TryPeek(out KcpConversationReceiveResult result)
+            => _receiveQueue.TryPeek(out result);
 
+        /// <summary>
+        /// Remove the next available message in the receive queue and copy its content into <paramref name="buffer"/>.
+        /// </summary>
+        /// <param name="buffer">The buffer to receive message.</param>
+        /// <param name="result">The transport state and the count of bytes moved into <paramref name="buffer"/>.</param>
+        /// <exception cref="ArgumentException">The size of the next available message is larger than the size of <paramref name="buffer"/>.</exception>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>True if the next available message is moved into <paramref name="buffer"/>. False if the receive queue is empty or the transport is closed.</returns>
+        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+            => _receiveQueue.TryReceive(buffer, out result);
+
+        /// <summary>
+        /// Wait until the receive queue contains at least one message.
+        /// </summary>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before receive operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when the receive queue contains at least one full message, or at least one byte in stream mode. Its result contains the transport state and the size of the available message.</returns>
         public ValueTask<KcpConversationReceiveResult> WaitToReceiveAsync(CancellationToken cancellationToken)
             => _receiveQueue.WaitToReceiveAsync(cancellationToken);
 
+        /// <summary>
+        /// Wait for the next full message to arrive if the receive queue is empty. Remove the next available message in the receive queue and copy its content into <paramref name="buffer"/>.
+        /// </summary>
+        /// <param name="buffer">The buffer to receive message.</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentException">The size of the next available message is larger than the size of <paramref name="buffer"/>.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when a message is moved into <paramref name="buffer"/> or the transport is closed. Its result contains the transport state and the count of bytes written into <paramref name="buffer"/>.</returns>
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
 

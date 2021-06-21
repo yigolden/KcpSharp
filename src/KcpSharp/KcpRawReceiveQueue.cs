@@ -44,22 +44,27 @@ namespace KcpSharp
         ValueTaskSourceStatus IValueTaskSource<KcpConversationReceiveResult>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<KcpConversationReceiveResult>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        public bool TryPeek(out int packetSize)
+        public bool TryPeek(out KcpConversationReceiveResult result)
         {
             lock (_queue)
             {
-                if (_disposed || _transportClosed || _operationOngoing)
+                if (_disposed || _transportClosed)
                 {
-                    packetSize = 0;
+                    result = default;
                     return false;
+                }
+                if (_operationOngoing)
+                {
+                    ThrowHelper.ThrowConcurrentReceiveException();
                 }
                 LinkedListNodeOfQueueItem? first = _queue.First;
                 if (first is null)
                 {
-                    packetSize = 0;
+                    result = new KcpConversationReceiveResult(0);
                     return false;
                 }
-                packetSize = first.ValueRef.Length;
+
+                result = new KcpConversationReceiveResult(first.ValueRef.Length);
                 return true;
             }
         }
@@ -103,6 +108,44 @@ namespace KcpSharp
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpRawReceiveQueue?)state)!.SetCanceled(), this);
 
             return new ValueTask<KcpConversationReceiveResult>(this, token);
+        }
+
+        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+        {
+            lock (_queue)
+            {
+                if (_disposed || _transportClosed)
+                {
+                    result = default;
+                    return false;
+                }
+                if (_operationOngoing)
+                {
+                    ThrowHelper.ThrowConcurrentReceiveException();
+                }
+                LinkedListNodeOfQueueItem? first = _queue.First;
+                if (first is null)
+                {
+                    result = new KcpConversationReceiveResult(0);
+                    return false;
+                }
+
+                KcpBuffer source = first.ValueRef;
+                if (buffer.Length < source.Length)
+                {
+                    ThrowHelper.ThrowBufferTooSmall();
+                }
+
+                source.DataRegion.CopyTo(buffer);
+                result = new KcpConversationReceiveResult(first.ValueRef.Length);
+
+                _queue.RemoveFirst();
+                first.ValueRef.Release();
+                first.ValueRef = default;
+                _recycled.AddLast(first);
+
+                return true;
+            }
         }
 
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)

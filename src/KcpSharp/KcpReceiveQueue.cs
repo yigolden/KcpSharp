@@ -147,8 +147,6 @@ namespace KcpSharp
                 if (_operationOngoing)
                 {
                     ThrowHelper.ThrowConcurrentReceiveException();
-                    result = default;
-                    return false;
                 }
 
                 if (_completedPacketsCount == 0)
