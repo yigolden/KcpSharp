@@ -648,9 +648,9 @@ namespace KcpSharp
 
         public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {
-            if (_disposed)
+            if (cancellationToken.IsCancellationRequested)
             {
-                return default;
+                return new ValueTask(Task.FromCanceled(cancellationToken));
             }
             if (packet.Length < 24)
             {
@@ -669,14 +669,15 @@ namespace KcpSharp
                 return default;
             }
 
-            return new ValueTask(OnReceivedCoreAsync(packet, cancellationToken));
+            OnReceivedCore(packetSpan);
+            return default;
         }
 
-        private Task OnReceivedCoreAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        private void OnReceivedCore(ReadOnlySpan<byte> packet)
         {
             if (_transportClosed)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             try
@@ -687,11 +688,9 @@ namespace KcpSharp
             {
                 _updateEvent?.TrySet(false);
             }
-
-            return Task.CompletedTask;
         }
 
-        private void SetInput(ReadOnlyMemory<byte> packet)
+        private void SetInput(ReadOnlySpan<byte> packet)
         {
             uint prev_una = _snd_una;
             uint maxack = 0, latest_ts = 0;
@@ -704,12 +703,12 @@ namespace KcpSharp
                     break;
                 }
 
-                if (BinaryPrimitives.ReadUInt32LittleEndian(packet.Span) != _id)
+                if (BinaryPrimitives.ReadUInt32LittleEndian(packet) != _id)
                 {
                     return;
                 }
-                var header = KcpPacketHeader.Parse(packet.Span.Slice(4));
-                int length = BinaryPrimitives.ReadInt32LittleEndian(packet.Span.Slice(20));
+                var header = KcpPacketHeader.Parse(packet.Slice(4));
+                int length = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(20));
 
                 packet = packet.Slice(24);
                 if ((uint)length > (uint)packet.Length)
@@ -949,7 +948,7 @@ namespace KcpSharp
             }
         }
 
-        private void HandleData(KcpPacketHeader header, ReadOnlyMemory<byte> data)
+        private void HandleData(KcpPacketHeader header, ReadOnlySpan<byte> data)
         {
             uint serialNumber = header.SerialNumber;
             if (TimeDiff(serialNumber, _rcv_nxt + _rcv_wnd) >= 0 || TimeDiff(serialNumber, _rcv_nxt) < 0)
@@ -987,7 +986,7 @@ namespace KcpSharp
                     IMemoryOwner<byte>? buffer = _allocator.Allocate(data.Length);
                     var item = new KcpSendReceiveBufferItem
                     {
-                        Data = KcpBuffer.CreateFromSpan(buffer, data.Span),
+                        Data = KcpBuffer.CreateFromSpan(buffer, data),
                         Segment = header
                     };
                     if (node is null)
