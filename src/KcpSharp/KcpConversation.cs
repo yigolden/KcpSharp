@@ -695,9 +695,9 @@ namespace KcpSharp
                     }
                     catch (Exception ex)
                     {
-                        if (HandleFlushException(ex))
+                        if (!HandleFlushException(ex))
                         {
-                            continue;
+                            break;
                         }
                     }
                 }
@@ -750,7 +750,14 @@ namespace KcpSharp
             bool result = false;
             if (handler is not null)
             {
-                result = handler.Invoke(ex, this, state);
+                try
+                {
+                    result = handler.Invoke(ex, this, state);
+                }
+                catch
+                {
+                    result = false;
+                }
             }
 
             if (!result)
@@ -1232,8 +1239,23 @@ namespace KcpSharp
         public void SetTransportClosed()
         {
             _transportClosed = true;
-            Interlocked.Exchange(ref _checkLoopCts, null)?.Cancel();
-            Interlocked.Exchange(ref _updateLoopCts, null)?.Cancel();
+            try
+            {
+                Interlocked.Exchange(ref _checkLoopCts, null)?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore
+            }
+            try
+            {
+                Interlocked.Exchange(ref _updateLoopCts, null)?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore
+            }
+
             _sendQueue.SetTransportClosed();
             _receiveQueue.SetTransportClosed();
             lock (_sndBuf)

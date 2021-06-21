@@ -6,8 +6,15 @@ using Xunit;
 
 namespace KcpSharp.Tests
 {
-    public class ExceptionHandlerTests
+    public class RawChannelExceptionHandlerTests
     {
+        private static async Task SendTwoPacketsAsync(KcpRawChannel channel, CancellationToken cancellationToken)
+        {
+            byte[] buffer = new byte[1];
+            await channel.SendAsync(buffer, cancellationToken);
+            await channel.SendAsync(buffer, cancellationToken);
+        }
+
         [InlineData(false)]
         [InlineData(true)]
         [Theory]
@@ -27,7 +34,7 @@ namespace KcpSharp.Tests
                 Exception? exceptionThrown = null;
                 object obj = new object();
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
                 {
                     handlerInvokedCount++;
@@ -38,7 +45,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 }, obj);
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -76,7 +83,7 @@ namespace KcpSharp.Tests
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv) =>
                 {
                     handlerInvokedCount++;
@@ -86,7 +93,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -124,7 +131,7 @@ namespace KcpSharp.Tests
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex) =>
                 {
                     handlerInvokedCount++;
@@ -133,7 +140,7 @@ namespace KcpSharp.Tests
                     return continueExecution;
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -170,7 +177,7 @@ namespace KcpSharp.Tests
                 Exception? exceptionThrown = null;
                 object obj = new object();
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv, state) =>
                 {
                     handlerInvokedCount++;
@@ -180,7 +187,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(obj, state));
                 }, obj);
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -207,7 +214,7 @@ namespace KcpSharp.Tests
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex, conv) =>
                 {
                     handlerInvokedCount++;
@@ -216,7 +223,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(conversation, conv));
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
@@ -243,7 +250,7 @@ namespace KcpSharp.Tests
                 int handlerInvokedCount = 0;
                 Exception? exceptionThrown = null;
 
-                using var conversation = new KcpConversation(new ThrowingTransport(exceptionFunc, 250), 0, null);
+                using var conversation = new KcpRawChannel(new ThrowingTransport(exceptionFunc, 250), 0, null);
                 conversation.SetExceptionHandler((ex) =>
                 {
                     handlerInvokedCount++;
@@ -251,7 +258,7 @@ namespace KcpSharp.Tests
                     Assert.True(ReferenceEquals(exception, ex));
                 });
 
-                _ = conversation.SendAsync(default, cancellationToken);
+                _ = SendTwoPacketsAsync(conversation, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
                 Assert.True(ReferenceEquals(exception, exceptionThrown));
