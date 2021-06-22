@@ -19,8 +19,8 @@ namespace KcpSharp
         private ManualResetValueTaskSourceCore<KcpConversationReceiveResult> _mrvtsc;
 
         private readonly LinkedListOfQueueItem _queue;
-        private readonly LinkedListOfQueueItem _recycled;
         private readonly bool _stream;
+        private readonly KcpSendReceiveQueueItemCache _cache;
         private int _completedPacketsCount;
 
         private bool _transportClosed;
@@ -32,15 +32,15 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        public KcpReceiveQueue(bool stream)
+        public KcpReceiveQueue(bool stream, KcpSendReceiveQueueItemCache cache)
         {
             _mrvtsc = new ManualResetValueTaskSourceCore<KcpConversationReceiveResult>()
             {
                 RunContinuationsAsynchronously = true
             };
             _queue = new LinkedListOfQueueItem();
-            _recycled = new LinkedListOfQueueItem();
             _stream = stream;
+            _cache = cache;
         }
 
         KcpConversationReceiveResult IValueTaskSource<KcpConversationReceiveResult>.GetResult(short token) => _mrvtsc.GetResult(token);
@@ -252,19 +252,19 @@ namespace KcpSharp
                 if (_stream)
                 {
                     fragment = 0;
-                    _queue.AddLast(AllocateNode(buffer, 0));
+                    _queue.AddLast(_cache.Rent(buffer, 0));
                 }
                 else
                 {
                     LinkedListNodeOfQueueItem? lastNode = _queue.Last;
                     if (lastNode is null || lastNode.ValueRef.Fragment == 0 || (lastNode.ValueRef.Fragment - 1) == fragment)
                     {
-                        _queue.AddLast(AllocateNode(buffer, fragment));
+                        _queue.AddLast(_cache.Rent(buffer, fragment));
                     }
                     else
                     {
                         fragment = 0;
-                        _queue.AddLast(AllocateNode(buffer, 0));
+                        _queue.AddLast(_cache.Rent(buffer, 0));
                     }
                 }
 
@@ -286,20 +286,6 @@ namespace KcpSharp
                     }
                 }
             }
-        }
-
-        private LinkedListNodeOfQueueItem AllocateNode(KcpBuffer data, byte fragment)
-        {
-            LinkedListNodeOfQueueItem? node = _recycled.First;
-            if (node is null)
-            {
-                return new LinkedListNodeOfQueueItem((data, fragment));
-            }
-
-            _recycled.RemoveFirst();
-            node.ValueRef.Data = data;
-            node.ValueRef.Fragment = fragment;
-            return node;
         }
 
         private void ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall)
@@ -387,7 +373,7 @@ namespace KcpSharp
                     // full fragment is consumed
                     data.Release();
                     _queue.Remove(node);
-                    _recycled.AddLast(node);
+                    _cache.Return(node);
                     if (fragment == 0)
                     {
                         _completedPacketsCount--;
@@ -458,7 +444,6 @@ namespace KcpSharp
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(default);
                 }
-                _recycled.Clear();
                 _transportClosed = true;
             }
         }
@@ -491,7 +476,6 @@ namespace KcpSharp
                     node = node.Next;
                 }
                 _queue.Clear();
-                _recycled.Clear();
                 _disposed = true;
                 _transportClosed = true;
             }

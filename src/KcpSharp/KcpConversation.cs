@@ -55,6 +55,7 @@ namespace KcpSharp
         private uint _dead_link;
         private uint _incr;
 
+        private readonly KcpSendReceiveQueueItemCache _queueItemCache;
         private readonly KcpSendQueue _sendQueue;
         private readonly KcpReceiveQueue _receiveQueue;
 
@@ -133,8 +134,9 @@ namespace KcpSharp
 
             _ackList = new KcpAcknowledgeList((int)_snd_wnd);
             _updateEvent = new KcpConversationUpdateNotification();
-            _sendQueue = new KcpSendQueue(_allocator, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss);
-            _receiveQueue = new KcpReceiveQueue(_stream);
+            _queueItemCache = new KcpSendReceiveQueueItemCache();
+            _sendQueue = new KcpSendQueue(_allocator, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
+            _receiveQueue = new KcpReceiveQueue(_stream, _queueItemCache);
 
             _checkLoopCts = new CancellationTokenSource();
             _updateLoopCts = new CancellationTokenSource();
@@ -1278,6 +1280,7 @@ namespace KcpSharp
                 }
                 _rcvBuf.Clear();
             }
+            _queueItemCache.Clear();
         }
 
         /// <inheritdoc />

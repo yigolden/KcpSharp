@@ -21,10 +21,10 @@ namespace KcpSharp
         private readonly bool _stream;
         private readonly int _capacity;
         private readonly int _mss;
+        private readonly KcpSendReceiveQueueItemCache _cache;
         private ManualResetValueTaskSourceCore<bool> _mrvtsc;
 
         private readonly LinkedListOfQueueItem _queue;
-        private readonly LinkedListOfQueueItem _recycled;
         private long _unflushedBytes;
 
         private bool _transportClosed;
@@ -36,20 +36,20 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        public KcpSendQueue(IKcpBufferAllocator allocator, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss)
+        public KcpSendQueue(IKcpBufferAllocator allocator, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
         {
             _allocator = allocator;
             _updateNotification = updateNotification;
             _stream = stream;
             _capacity = capacity;
             _mss = mss;
+            _cache = cache;
             _mrvtsc = new ManualResetValueTaskSourceCore<bool>()
             {
                 RunContinuationsAsynchronously = true
             };
 
             _queue = new LinkedListOfQueueItem();
-            _recycled = new LinkedListOfQueueItem();
         }
 
         bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
@@ -119,7 +119,7 @@ namespace KcpSharp
                     var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
                     buffer = buffer.Slice(size);
 
-                    _queue.AddLast(AllocateNode(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
+                    _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
                     Interlocked.Add(ref _unflushedBytes, size);
                 }
 
@@ -178,20 +178,6 @@ namespace KcpSharp
             return new ValueTask<bool>(this, token);
         }
 
-        private LinkedListNodeOfQueueItem AllocateNode(KcpBuffer data, byte fragment)
-        {
-            LinkedListNodeOfQueueItem? node = _recycled.First;
-            if (node is null)
-            {
-                return new LinkedListNodeOfQueueItem((data, fragment));
-            }
-
-            _recycled.RemoveFirst();
-            node.ValueRef.Data = data;
-            node.ValueRef.Fragment = fragment;
-            return node;
-        }
-
         private void SetCanceled()
         {
             lock (_queue)
@@ -235,7 +221,7 @@ namespace KcpSharp
                     (data, fragment) = node.ValueRef;
                     _queue.RemoveFirst();
                     node.ValueRef = default;
-                    _recycled.AddLast(node);
+                    _cache.Return(node);
 
                     MoveOneFragmentIn();
                     return true;
@@ -255,7 +241,7 @@ namespace KcpSharp
                 var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
                 _buffer = buffer.Slice(size);
 
-                _queue.AddLast(AllocateNode(kcpBuffer, _stream ? (byte)0 : (byte)(count - 1)));
+                _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)(count - 1)));
                 Interlocked.Add(ref _unflushedBytes, size);
 
                 if (count == 1)
@@ -294,7 +280,6 @@ namespace KcpSharp
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(false);
                 }
-                _recycled.Clear();
                 _transportClosed = true;
             }
         }
@@ -319,7 +304,6 @@ namespace KcpSharp
                     node = node.Next;
                 }
                 _queue.Clear();
-                _recycled.Clear();
                 _disposed = true;
                 _transportClosed = true;
             }
