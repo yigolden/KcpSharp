@@ -15,6 +15,9 @@ using LinkedListNodeOfBufferItem = System.Collections.Generic.LinkedListNode<Kcp
 
 namespace KcpSharp
 {
+    /// <summary>
+    /// A reliable channel over an unreliable transport implemented in KCP protocol.
+    /// </summary>
     public sealed class KcpConversation : IKcpConversation
     {
         private readonly IKcpBufferAllocator _allocator;
@@ -84,6 +87,12 @@ namespace KcpSharp
         private const uint IKCP_PROBE_INIT = 7000;       // 7 secs to probe window size
         private const uint IKCP_PROBE_LIMIT = 120000;    // up to 120 secs to probe window
 
+        /// <summary>
+        /// Construct a reliable channel using KCP protocol.
+        /// </summary>
+        /// <param name="connection">The underlying transport.</param>
+        /// <param name="conversationId">The conversation ID.</param>
+        /// <param name="options">The options of the <see cref="KcpConversation"/>.</param>
         public KcpConversation(IKcpTransport connection, int conversationId, KcpConversationOptions? options)
         {
             _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
@@ -769,6 +778,7 @@ namespace KcpSharp
             return result;
         }
 
+        /// <inheritdoc />
         public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested)
@@ -1235,9 +1245,7 @@ namespace KcpSharp
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
 
-        /// <summary>
-        /// Mark the underlying transport as closed. Abort all active send or receive operations.
-        /// </summary>
+        /// <inheritdoc />
         public void SetTransportClosed()
         {
             _transportClosed = true;

@@ -22,6 +22,7 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
     <!-- Enable deterministic build -->
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>

@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 namespace KcpSharp
 {
+    /// <summary>
+    /// An unreliable channel with a conversation ID.
+    /// </summary>
     public sealed class KcpRawChannel : IKcpConversation
     {
         private readonly IKcpBufferAllocator _allocator;
@@ -21,6 +24,12 @@ namespace KcpSharp
         private Func<Exception, KcpRawChannel, object?, bool>? _exceptionHandler;
         private object? _exceptionHandlerState;
 
+        /// <summary>
+        /// Construct a unreliable channel with a conversation ID.
+        /// </summary>
+        /// <param name="transport">The underlying transport.</param>
+        /// <param name="conversationId">The conversation ID.</param>
+        /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
         public KcpRawChannel(IKcpTransport transport, int conversationId, KcpRawChannelOptions? options)
         {
             _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
@@ -175,6 +184,16 @@ namespace KcpSharp
         /// </summary>
         public bool TransportClosed => _sendLoopCts is null;
 
+        /// <summary>
+        /// Send message to the underlying transport.
+        /// </summary>
+        /// <param name="buffer">The content of the message</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentException">The size of the message is larger than mtu, thus it can not be sent.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The send operation is initiated concurrently.</exception>
+        /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendOperation.SendAsync(buffer, cancellationToken);
 
@@ -259,7 +278,8 @@ namespace KcpSharp
             return result;
         }
 
-        ValueTask IKcpConversation.OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        /// <inheritdoc />
+        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {
             ReadOnlySpan<byte> span = packet.Span;
             if (span.Length < 4 || span.Length > _mtu)
@@ -316,6 +336,7 @@ namespace KcpSharp
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
 
+        /// <inheritdoc />
         public void SetTransportClosed()
         {
             try
@@ -332,6 +353,7 @@ namespace KcpSharp
             _sendNotification.Set(0);
         }
 
+        /// <inheritdoc />
         public void Dispose()
         {
             SetTransportClosed();

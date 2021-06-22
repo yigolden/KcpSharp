@@ -6,6 +6,10 @@ using System.Threading.Tasks;
 
 namespace KcpSharp
 {
+    /// <summary>
+    /// Multiplex many channels or conversations over the same transport.
+    /// </summary>
+    /// <typeparam name="T">The state of the channel.</typeparam>
     public sealed class KcpMultiplexConnection<T> : IKcpTransport, IDisposable
     {
         private readonly IKcpTransport _transport;
@@ -13,6 +17,10 @@ namespace KcpSharp
         private readonly ConcurrentDictionary<int, (IKcpConversation Conversation, T? State)> _conversations = new();
         private bool _disposed;
 
+        /// <summary>
+        /// Construct a multiplexed connection over a transport.
+        /// </summary>
+        /// <param name="transport">The underlying transport.</param>
         public KcpMultiplexConnection(IKcpTransport transport)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -31,7 +39,12 @@ namespace KcpSharp
             throw new ObjectDisposedException(nameof(KcpMultiplexConnection<T>));
         }
 
-
+        /// <summary>
+        /// Process a newly received packet from the transport.
+        /// </summary>
+        /// <param name="packet">The content of the packet with conversation ID.</param>
+        /// <param name="cancellationToken">A token to cancel this operation.</param>
+        /// <returns>A <see cref="ValueTask"/> that completes when the packet is handled by the corresponding channel or conversation.</returns>
         public ValueTask InputPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {
             ReadOnlySpan<byte> span = packet.Span;
@@ -51,12 +64,18 @@ namespace KcpSharp
             return default;
         }
 
+        /// <summary>
+        /// Create a raw channel with the specified conversation ID.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
+        /// <returns>The raw channel created.</returns>
         public KcpRawChannel CreateRawChannel(int id, KcpRawChannelOptions? options = null)
         {
             KcpRawChannel? channel = new KcpRawChannel(this, id, options);
             try
             {
-                RegisterConversation(channel, default, id);
+                RegisterConversation(channel, id, default);
                 return Interlocked.Exchange<KcpRawChannel?>(ref channel, null)!;
             }
             finally
@@ -68,12 +87,19 @@ namespace KcpSharp
             }
         }
 
+        /// <summary>
+        /// Create a raw channel with the specified conversation ID.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <param name="state">The user state of this channel.</param>
+        /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
+        /// <returns>The raw channel created.</returns>
         public KcpRawChannel CreateRawChannel(int id, T state, KcpRawChannelOptions? options = null)
         {
             var channel = new KcpRawChannel(this, id, options);
             try
             {
-                RegisterConversation(channel, state, id);
+                RegisterConversation(channel, id, state);
                 return Interlocked.Exchange<KcpRawChannel?>(ref channel, null)!;
             }
             finally
@@ -85,12 +111,18 @@ namespace KcpSharp
             }
         }
 
+        /// <summary>
+        /// Create a conversation with the specified conversation ID.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <param name="options">The options of the <see cref="KcpConversation"/>.</param>
+        /// <returns>The KCP conversation created.</returns>
         public KcpConversation CreateConversation(int id, KcpConversationOptions? options = null)
         {
             var conversation = new KcpConversation(this, id, options);
             try
             {
-                RegisterConversation(conversation, default, id);
+                RegisterConversation(conversation, id, default);
                 return Interlocked.Exchange<KcpConversation?>(ref conversation, null)!;
             }
             finally
@@ -102,12 +134,19 @@ namespace KcpSharp
             }
         }
 
+        /// <summary>
+        /// Create a conversation with the specified conversation ID.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <param name="state">The user state of this conversation.</param>
+        /// <param name="options">The options of the <see cref="KcpConversation"/>.</param>
+        /// <returns>The KCP conversation created.</returns>
         public KcpConversation CreateConversation(int id, T state, KcpConversationOptions? options = null)
         {
             var conversation = new KcpConversation(this, id, options);
             try
             {
-                RegisterConversation(conversation, state, id);
+                RegisterConversation(conversation, id, state);
                 return Interlocked.Exchange<KcpConversation?>(ref conversation, null)!;
             }
             finally
@@ -119,7 +158,13 @@ namespace KcpSharp
             }
         }
 
-        public void RegisterConversation(IKcpConversation conversation, T? state, int id)
+        /// <summary>
+        /// Register a conversation or channel with the specified conversation ID and user state.
+        /// </summary>
+        /// <param name="conversation">The conversation or channel to register.</param>
+        /// <param name="id">The conversation ID.</param>
+        /// <param name="state">The user state</param>
+        public void RegisterConversation(IKcpConversation conversation, int id, T? state)
         {
             if (conversation is null)
             {
@@ -139,6 +184,11 @@ namespace KcpSharp
             }
         }
 
+        /// <summary>
+        /// Unregister a conversation or channel with the specified conversation ID.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <returns>The conversation unregistered with the user state. Returns default when the conversation with the specified ID is not found.</returns>
         public (IKcpConversation? Conversation, T? State) UnregisterConversation(int id)
         {
             if (_disposed)
@@ -153,6 +203,7 @@ namespace KcpSharp
             return default;
         }
 
+        /// <inheritdoc />
         public ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {
             if (_disposed)
@@ -162,6 +213,7 @@ namespace KcpSharp
             return _transport.SendPacketAsync(packet, cancellationToken);
         }
 
+        /// <inheritdoc />
         public void Dispose()
         {
             if (_disposed)
