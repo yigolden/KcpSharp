@@ -10,6 +10,7 @@ namespace KcpSharp
         /// <summary>
         /// Set the handler to invoke when exception is thrown. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation.
         /// </summary>
+        /// <param name="producer">The producer instance.</param>
         /// <param name="handler">The exception handler.</param>
         public static void SetExceptionHandler<T>(this IKcpExceptionProducer<T> producer, Func<Exception, T, bool> handler)
         {
@@ -31,6 +32,7 @@ namespace KcpSharp
         /// <summary>
         /// Set the handler to invoke when exception is thrown. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation.
         /// </summary>
+        /// <param name="producer">The producer instance.</param>
         /// <param name="handler">The exception handler.</param>
         public static void SetExceptionHandler<T>(this IKcpExceptionProducer<T> producer, Func<Exception, bool> handler)
         {
@@ -52,6 +54,7 @@ namespace KcpSharp
         /// <summary>
         /// Set the handler to invoke when exception is thrown.
         /// </summary>
+        /// <param name="producer">The producer instance.</param>
         /// <param name="handler">The exception handler.</param>
         /// <param name="state">The state object to pass into the exception handler.</param>
         public static void SetExceptionHandler<T>(this IKcpExceptionProducer<T> producer, Action<Exception, T, object?> handler, object? state)
@@ -79,6 +82,7 @@ namespace KcpSharp
         /// <summary>
         /// Set the handler to invoke when exception is thrown.
         /// </summary>
+        /// <param name="producer">The producer instance.</param>
         /// <param name="handler">The exception handler.</param>
         public static void SetExceptionHandler<T>(this IKcpExceptionProducer<T> producer, Action<Exception, T> handler)
         {
@@ -105,6 +109,7 @@ namespace KcpSharp
         /// <summary>
         /// Set the handler to invoke when exception is thrown.
         /// </summary>
+        /// <param name="producer">The producer instance.</param>
         /// <param name="handler">The exception handler.</param>
         public static void SetExceptionHandler<T>(this IKcpExceptionProducer<T> producer, Action<Exception> handler)
         {
