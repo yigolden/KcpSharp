@@ -31,9 +31,9 @@ namespace KcpEcho
             SocketHelper.PatchSocket(socket);
             await socket.ConnectAsync(ipEndPoint, cancellationToken);
 
-            var transport = new SocketKcpTransport(socket, ipEndPoint);
-            var conversation = new KcpConversation(transport, (int)conversationId, options);
-            transport.StartPumpPacketsToConversation(conversation, options.Mtu, cancellationToken);
+            using IKcpTransport<KcpConversation> transport = KcpSocketTransport.CreateConversation(socket, ipEndPoint, (int)conversationId, options);
+            transport.Start();
+            KcpConversation conversation = transport.Connection;
 
             _ = Task.Run(() => ReceiveAndDisplay(conversation, cancellationToken));
 

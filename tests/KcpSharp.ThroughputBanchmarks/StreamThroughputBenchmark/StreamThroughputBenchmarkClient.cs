@@ -83,9 +83,9 @@ namespace KcpSharp.ThroughputBanchmarks.StreamThroughputBenchmark
             SocketHelper.PatchSocket(socket);
             await socket.ConnectAsync(ipEndPoint, cancellationToken);
 
-            var transport = new SocketKcpTransport(socket, ipEndPoint);
-            var conversation = new KcpConversation(transport, 0, options);
-            transport.StartPumpPacketsToConversation(conversation, options.Mtu, cancellationToken);
+            IKcpTransport<KcpConversation> transport = KcpSocketTransport.CreateConversation(socket, ipEndPoint, 0, options);
+            transport.Start();
+            KcpConversation conversation = transport.Connection;
 
             byte[] packet = new byte[bufferSize];
             while (!cancellationToken.IsCancellationRequested)
