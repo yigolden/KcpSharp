@@ -9,7 +9,7 @@ namespace KcpSharp
     /// <summary>
     /// An unreliable channel with a conversation ID.
     /// </summary>
-    public sealed class KcpRawChannel : IKcpConversation
+    public sealed class KcpRawChannel : IKcpConversation, IKcpExceptionProducer<KcpRawChannel>
     {
         private readonly IKcpBufferAllocator _allocator;
         private readonly IKcpTransport _transport;
@@ -63,8 +63,6 @@ namespace KcpSharp
             _ = Task.Run(() => SendLoopAsync(_sendLoopCts));
         }
 
-        #region Exception handlers
-
         /// <summary>
         /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
         /// </summary>
@@ -80,99 +78,6 @@ namespace KcpSharp
             _exceptionHandler = handler;
             _exceptionHandlerState = state;
         }
-
-        /// <summary>
-        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
-        /// </summary>
-        /// <param name="handler">The exception handler.</param>
-        public void SetExceptionHandler(Func<Exception, KcpRawChannel, bool> handler)
-        {
-            if (handler is null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
-
-            _exceptionHandler = (ex, conv, state) => ((Func<Exception, KcpRawChannel, bool>?)state)!.Invoke(ex, conv);
-            _exceptionHandlerState = handler;
-        }
-
-        /// <summary>
-        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation and mark the transport as closed.
-        /// </summary>
-        /// <param name="handler">The exception handler.</param>
-        public void SetExceptionHandler(Func<Exception, bool> handler)
-        {
-            if (handler is null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
-
-            _exceptionHandler = (ex, conv, state) => ((Func<Exception, bool>?)state)!.Invoke(ex);
-            _exceptionHandlerState = handler;
-        }
-
-        /// <summary>
-        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
-        /// </summary>
-        /// <param name="handler">The exception handler.</param>
-        /// <param name="state">The state object to pass into the exception handler.</param>
-        public void SetExceptionHandler(Action<Exception, KcpRawChannel, object?> handler, object? state)
-        {
-            if (handler is null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
-
-            _exceptionHandler = (ex, conv, state) =>
-            {
-                var tuple = (Tuple<Action<Exception, KcpRawChannel, object?>, object?>)state!;
-                tuple.Item1.Invoke(ex, conv, tuple.Item2);
-                return false;
-            };
-            _exceptionHandlerState = Tuple.Create(handler, state);
-        }
-
-        /// <summary>
-        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
-        /// </summary>
-        /// <param name="handler">The exception handler.</param>
-        public void SetExceptionHandler(Action<Exception, KcpRawChannel> handler)
-        {
-            if (handler is null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
-
-            _exceptionHandler = (ex, conv, state) =>
-            {
-                var handler = (Action<Exception, KcpRawChannel>)state!;
-                handler.Invoke(ex, conv);
-                return false;
-            };
-            _exceptionHandlerState = handler;
-        }
-
-        /// <summary>
-        /// Set the handler to invoke when exception is thrown during flushing packets to the transport. The transport will be marked as closed after the exception handler in invoked.
-        /// </summary>
-        /// <param name="handler">The exception handler.</param>
-        public void SetExceptionHandler(Action<Exception> handler)
-        {
-            if (handler is null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
-
-            _exceptionHandler = (ex, conv, state) =>
-            {
-                var handler = (Action<Exception>)state!;
-                handler.Invoke(ex);
-                return false;
-            };
-            _exceptionHandlerState = handler;
-        }
-
-        #endregion
 
         /// <summary>
         /// Get the ID of the current conversation.
