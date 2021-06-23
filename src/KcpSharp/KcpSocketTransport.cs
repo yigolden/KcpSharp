@@ -31,5 +31,27 @@ namespace KcpSharp
 
             return new KcpSocketTransportForConversation(socket, endPoint, conversationId, options);
         }
+
+        /// <summary>
+        /// Create a socket transport for raw channel.
+        /// </summary>
+        /// <param name="socket">The socket instance.</param>
+        /// <param name="endPoint">The remote endpoint.</param>
+        /// <param name="conversationId">The conversation ID.</param>
+        /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
+        /// <returns>The created socket transport instance.</returns>
+        public static IKcpTransport<KcpRawChannel> CreateRawChannel(Socket socket, EndPoint endPoint, int conversationId, KcpRawChannelOptions? options)
+        {
+            if (socket is null)
+            {
+                throw new ArgumentNullException(nameof(socket));
+            }
+            if (endPoint is null)
+            {
+                throw new ArgumentNullException(nameof(endPoint));
+            }
+
+            return new KcpSocketTransportForRawChannel(socket, endPoint, conversationId, options);
+        }
     }
 }
