@@ -6,7 +6,7 @@ namespace KcpSharp
     /// A transport instance for upper-level connections.
     /// </summary>
     /// <typeparam name="T">The type of the upper-level connection.</typeparam>
-    public interface IKcpTransport<T> : IKcpTransport, IKcpExceptionProducer<IKcpTransport<T>>, IDisposable
+    public interface IKcpTransport<out T> : IKcpTransport, IKcpExceptionProducer<IKcpTransport<T>>, IDisposable
     {
         /// <summary>
         /// Get the upper-level connection instace. If Start is not called or the transport is closed, <see cref="InvalidOperationException"/> will be thrown.

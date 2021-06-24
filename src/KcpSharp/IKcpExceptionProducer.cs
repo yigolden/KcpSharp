@@ -6,7 +6,7 @@ namespace KcpSharp
     /// An instance that can produce exceptions in background jobs.
     /// </summary>
     /// <typeparam name="T">The type of the instance.</typeparam>
-    public interface IKcpExceptionProducer<T>
+    public interface IKcpExceptionProducer<out T>
     {
         /// <summary>
         /// Set the handler to invoke when exception is thrown. Return true in the handler to ignore the error and continue running. Return false in the handler to abort the operation.

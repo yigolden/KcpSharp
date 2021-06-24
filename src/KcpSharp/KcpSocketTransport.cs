@@ -53,5 +53,48 @@ namespace KcpSharp
 
             return new KcpSocketTransportForRawChannel(socket, endPoint, conversationId, options);
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <param name="endPoint"></param>
+        /// <param name="mtu"></param>
+        /// <returns></returns>
+        public static IKcpTransport<IKcpMultiplexConnection> CreateMultiplexConnection(Socket socket, EndPoint endPoint, int mtu)
+        {
+            if (socket is null)
+            {
+                throw new ArgumentNullException(nameof(socket));
+            }
+            if (endPoint is null)
+            {
+                throw new ArgumentNullException(nameof(endPoint));
+            }
+
+            return new KcpSocketTransportForMultiplexConnection<object>(socket, endPoint, mtu);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="socket"></param>
+        /// <param name="endPoint"></param>
+        /// <param name="mtu"></param>
+        /// <returns></returns>
+        public static IKcpTransport<IKcpMultiplexConnection<T>> CreateMultiplexConnection<T>(Socket socket, EndPoint endPoint, int mtu)
+        {
+            if (socket is null)
+            {
+                throw new ArgumentNullException(nameof(socket));
+            }
+            if (endPoint is null)
+            {
+                throw new ArgumentNullException(nameof(endPoint));
+            }
+
+            return new KcpSocketTransportForMultiplexConnection<T>(socket, endPoint, mtu);
+        }
     }
 }

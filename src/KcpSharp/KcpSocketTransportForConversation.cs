@@ -23,7 +23,6 @@ namespace KcpSharp
             _options = options;
         }
 
-        /// <inheritdoc />
         protected override KcpConversation Activate() => new KcpConversation(this, _conversationId, _options);
 
         protected override bool HandleException(Exception ex)
@@ -35,7 +34,6 @@ namespace KcpSharp
             return false;
         }
 
-        /// <inheritdoc />
         public void SetExceptionHandler(Func<Exception, IKcpTransport<KcpConversation>, object?, bool> handler, object? state)
         {
             _exceptionHandler = handler;

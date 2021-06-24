@@ -20,7 +20,6 @@ namespace KcpSharp
             _options = options;
         }
 
-        /// <inheritdoc />
         protected override KcpRawChannel Activate() => new KcpRawChannel(this, _conversationId, _options);
 
         protected override bool HandleException(Exception ex)
@@ -32,7 +31,6 @@ namespace KcpSharp
             return false;
         }
 
-        /// <inheritdoc />
         public void SetExceptionHandler(Func<Exception, IKcpTransport<KcpRawChannel>, object?, bool> handler, object? state)
         {
             _exceptionHandler = handler;
