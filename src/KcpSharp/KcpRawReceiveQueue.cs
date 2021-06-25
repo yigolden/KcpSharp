@@ -110,7 +110,7 @@ namespace KcpSharp
             return new ValueTask<KcpConversationReceiveResult>(this, token);
         }
 
-        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+        public bool TryReceive(Span<byte> buffer, out KcpConversationReceiveResult result)
         {
             lock (_queue)
             {
@@ -136,7 +136,7 @@ namespace KcpSharp
                     ThrowHelper.ThrowBufferTooSmall();
                 }
 
-                source.DataRegion.CopyTo(buffer);
+                source.DataRegion.Span.CopyTo(buffer);
                 result = new KcpConversationReceiveResult(first.ValueRef.Length);
 
                 _queue.RemoveFirst();

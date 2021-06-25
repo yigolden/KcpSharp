@@ -117,7 +117,7 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                    ConsumePacket(_buffer.Span, out KcpConversationReceiveResult result, out bool bufferTooSmall);
                     ClearPreviousOperation();
                     if (bufferTooSmall)
                     {
@@ -135,7 +135,7 @@ namespace KcpSharp
             return new ValueTask<KcpConversationReceiveResult>(this, token);
         }
 
-        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+        public bool TryReceive(Span<byte> buffer, out KcpConversationReceiveResult result)
         {
             lock (_queue)
             {
@@ -157,9 +157,8 @@ namespace KcpSharp
 
                 _operationOngoing = true;
                 _bufferProvided = true;
-                _buffer = buffer;
 
-                ConsumePacket(out result, out bool bufferTooSmall);
+                ConsumePacket(buffer, out result, out bool bufferTooSmall);
                 ClearPreviousOperation();
                 if (bufferTooSmall)
                 {
@@ -200,7 +199,7 @@ namespace KcpSharp
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
                 {
-                    ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                    ConsumePacket(_buffer.Span, out KcpConversationReceiveResult result, out bool bufferTooSmall);
                     ClearPreviousOperation();
                     if (bufferTooSmall)
                     {
@@ -273,7 +272,7 @@ namespace KcpSharp
                     _completedPacketsCount++;
                     if (_operationOngoing)
                     {
-                        ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                        ConsumePacket(_buffer.Span, out KcpConversationReceiveResult result, out bool bufferTooSmall);
                         ClearPreviousOperation();
                         if (bufferTooSmall)
                         {
@@ -288,7 +287,7 @@ namespace KcpSharp
             }
         }
 
-        private void ConsumePacket(out KcpConversationReceiveResult result, out bool bufferTooSmall)
+        private void ConsumePacket(Span<byte> buffer, out KcpConversationReceiveResult result, out bool bufferTooSmall)
         {
             Debug.Assert(_operationOngoing);
 
@@ -348,7 +347,6 @@ namespace KcpSharp
             bool anyDataReceived = false;
             bytesInPacket = 0;
             node = _queue.First;
-            Memory<byte> buffer = _buffer;
             LinkedListNodeOfQueueItem? next;
             while (node is not null)
             {
@@ -358,7 +356,7 @@ namespace KcpSharp
                 KcpBuffer data = node.ValueRef.Data;
 
                 int sizeToCopy = Math.Min(data.Length, buffer.Length);
-                data.DataRegion.Slice(0, sizeToCopy).CopyTo(buffer);
+                data.DataRegion.Span.Slice(0, sizeToCopy).CopyTo(buffer);
                 buffer = buffer.Slice(sizeToCopy);
                 bytesInPacket += sizeToCopy;
                 anyDataReceived = true;

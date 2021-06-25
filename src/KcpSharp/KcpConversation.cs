@@ -1125,7 +1125,7 @@ namespace KcpSharp
         /// <exception cref="ArgumentException">The size of the next available message is larger than the size of <paramref name="buffer"/>. This exception is never thrown in stream mode.</exception>
         /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>True if the next available message is moved into <paramref name="buffer"/>. False if the receive queue is empty or the transport is closed.</returns>
-        public bool TryReceive(Memory<byte> buffer, out KcpConversationReceiveResult result)
+        public bool TryReceive(Span<byte> buffer, out KcpConversationReceiveResult result)
             => _receiveQueue.TryReceive(buffer, out result);
 
         /// <summary>
