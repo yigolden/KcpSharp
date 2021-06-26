@@ -336,7 +336,7 @@ namespace KcpSharp
                     return;
                 }
 
-                if (bytesInPacket > _buffer.Length)
+                if (bytesInPacket > buffer.Length)
                 {
                     result = default;
                     bufferTooSmall = true;
