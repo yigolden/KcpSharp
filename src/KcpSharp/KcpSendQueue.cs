@@ -57,6 +57,45 @@ namespace KcpSharp
         void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
+        public bool TryGetAvailableSpace(out int byteCount, out int fragmentCount)
+        {
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    byteCount = 0;
+                    fragmentCount = 0;
+                    return false;
+                }
+                if (_operationOngoing && _bufferProvided)
+                {
+                    byteCount = 0;
+                    fragmentCount = 0;
+                    return true;
+                }
+                int mss = _mss;
+                int availableFragments = _capacity - _queue.Count;
+                if (availableFragments < 0)
+                {
+                    byteCount = 0;
+                    fragmentCount = 0;
+                    return true;
+                }
+                int availableBytes = availableFragments * mss;
+                if (_stream)
+                {
+                    LinkedListNodeOfQueueItem? last = _queue.Last;
+                    if (last is not null)
+                    {
+                        availableBytes += _mss - last.ValueRef.Data.Length;
+                    }
+                }
+                byteCount = availableBytes;
+                fragmentCount = availableFragments;
+                return true;
+            }
+        }
+
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
         {
             short token;

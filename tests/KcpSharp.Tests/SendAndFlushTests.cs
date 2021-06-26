@@ -18,6 +18,17 @@ namespace KcpSharp.Tests
         }
 
         [Fact]
+        public Task FlushAfterDispose()
+        {
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
+            {
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                pipe.Alice.Dispose();
+                await Assert.ThrowsAsync<ObjectDisposedException>(async () => await pipe.Alice.FlushAsync(cancellationToken));
+            });
+        }
+
+        [Fact]
         public Task FlushAfterTransportClosed()
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>

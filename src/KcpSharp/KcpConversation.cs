@@ -183,6 +183,15 @@ namespace KcpSharp
         public bool TransportClosed => _transportClosed;
 
         /// <summary>
+        /// Get the available byte count and available fragment count in the send queue.
+        /// </summary>
+        /// <param name="byteCount">The available byte count in the send queue.</param>
+        /// <param name="fragmentCount">The available fragment count in the send queue.</param>
+        /// <returns>True if the transport is not closed. Otherwise false.</returns>
+        public bool TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount)
+            => _sendQueue.TryGetAvailableSpace(out byteCount, out fragmentCount);
+
+        /// <summary>
         /// Put message into the send queue.
         /// </summary>
         /// <param name="buffer">The content of the message</param>
