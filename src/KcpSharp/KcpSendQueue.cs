@@ -101,11 +101,7 @@ namespace KcpSharp
             short token;
             lock (_queue)
             {
-                if (_disposed)
-                {
-                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
-                }
-                if (_transportClosed)
+                if (_transportClosed || _disposed)
                 {
                     return new ValueTask<bool>(false);
                 }
@@ -187,11 +183,7 @@ namespace KcpSharp
             short token;
             lock (_queue)
             {
-                if (_disposed)
-                {
-                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpConversation()));
-                }
-                if (_transportClosed)
+                if (_transportClosed || _disposed)
                 {
                     return new ValueTask<bool>(false);
                 }

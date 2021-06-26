@@ -24,7 +24,7 @@ namespace KcpSharp.Tests
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
                 pipe.Alice.Dispose();
-                await Assert.ThrowsAsync<ObjectDisposedException>(async () => await pipe.Alice.FlushAsync(cancellationToken));
+                Assert.False(await pipe.Alice.FlushAsync(cancellationToken));
             });
         }
 

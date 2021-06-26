@@ -23,11 +23,12 @@ namespace KcpSharp.Tests
             Assert.True(result.TransportClosed);
             Assert.False(conversation.TryReceive(default, out result));
             Assert.True(result.TransportClosed);
-
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await conversation.SendAsync(new byte[100], CancellationToken.None));
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await conversation.FlushAsync(CancellationToken.None));
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await conversation.WaitToReceiveAsync(CancellationToken.None));
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await conversation.ReceiveAsync(new byte[100], CancellationToken.None));
+            Assert.False(await conversation.SendAsync(new byte[100], CancellationToken.None));
+            Assert.False(await conversation.FlushAsync(CancellationToken.None));
+            result = await conversation.WaitToReceiveAsync(CancellationToken.None);
+            Assert.True(result.TransportClosed);
+            await conversation.ReceiveAsync(new byte[100], CancellationToken.None);
+            Assert.True(result.TransportClosed);
         }
     }
 }

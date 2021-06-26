@@ -37,11 +37,7 @@ namespace KcpSharp
             short token;
             lock (this)
             {
-                if (_disposed)
-                {
-                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewObjectDisposedExceptionForKcpRawChannel()));
-                }
-                if (_transportClosed)
+                if (_transportClosed || _disposed)
                 {
                     return new ValueTask<bool>(false);
                 }

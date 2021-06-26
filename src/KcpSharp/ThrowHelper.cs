@@ -28,13 +28,5 @@ namespace KcpSharp
         {
             throw new InvalidOperationException("Concurrent receive operations are not allowed.");
         }
-        public static Exception NewObjectDisposedExceptionForKcpConversation()
-        {
-            return new ObjectDisposedException(nameof(KcpConversation));
-        }
-        public static Exception NewObjectDisposedExceptionForKcpRawChannel()
-        {
-            return new ObjectDisposedException(nameof(KcpRawChannel));
-        }
     }
 }

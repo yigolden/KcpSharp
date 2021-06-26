@@ -194,7 +194,7 @@ namespace KcpSharp
         /// <summary>
         /// Put message into the send queue.
         /// </summary>
-        /// <param name="buffer">The content of the message</param>
+        /// <param name="buffer">The content of the message.</param>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
