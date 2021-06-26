@@ -16,6 +16,10 @@ namespace KcpSharp
         {
             throw new ArgumentException("Buffer is too small.", "buffer");
         }
+        public static Exception ThrowAllowPartialSendArgumentException()
+        {
+            throw new ArgumentException("allowPartialSend should not be set to true in none-stream mode.", "allowPartialSend");
+        }
         public static Exception NewConcurrentSendException()
         {
             return new InvalidOperationException("Concurrent send operations are not allowed.");

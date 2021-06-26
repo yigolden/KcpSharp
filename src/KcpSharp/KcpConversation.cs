@@ -192,6 +192,28 @@ namespace KcpSharp
             => _sendQueue.TryGetAvailableSpace(out byteCount, out fragmentCount);
 
         /// <summary>
+        /// Try to put message into the send queue.
+        /// </summary>
+        /// <param name="buffer">The content of the message.</param>
+        /// <returns>True if the message is put into the send queue. False if the message is too large to fit in the send queue, or the transport is closed.</returns>
+        /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
+        public bool TrySend(ReadOnlySpan<byte> buffer)
+            => _sendQueue.TrySend(buffer, false, out _);
+
+        /// <summary>
+        /// Try to put message into the send queue.
+        /// </summary>
+        /// <param name="buffer">The content of the message.</param>
+        /// <param name="allowPartialSend">Whether partial sending is allowed in stream mode. This must not be true in none-stream mode.</param>
+        /// <param name="bytesWritten">The number of bytes put into the send queue. This is always the same as the size of the <paramref name="buffer"/> unless <paramref name="allowPartialSend"/> is set to true.</param>
+        /// <returns>True if the message is put into the send queue. False if the message is too large to fit in the send queue, or the transport is closed.</returns>
+        /// <exception cref="ArgumentException"><paramref name="allowPartialSend"/> is set to true in none-stream mode. Or the size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
+        public bool TrySend(ReadOnlySpan<byte> buffer, bool allowPartialSend, out int bytesWritten)
+            => _sendQueue.TrySend(buffer, allowPartialSend, out bytesWritten);
+
+        /// <summary>
         /// Put message into the send queue.
         /// </summary>
         /// <param name="buffer">The content of the message.</param>
@@ -199,7 +221,6 @@ namespace KcpSharp
         /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
-        /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
             => _sendQueue.SendAsync(buffer, cancellationToken);
@@ -528,7 +549,7 @@ namespace KcpSharp
                 Segment = new KcpPacketHeader(KcpCommand.Push, fragment, windowSize, current, serialNumber, unacknowledged),
                 Stats = new KcpSendSegmentStats(current, rto, 0, 0)
             };
-            return _cache.Allocate(ref newseg);
+            return _cache.Allocate(in newseg);
         }
 
         private static KcpPacketHeader DeplicateHeader(ref KcpPacketHeader header, uint timestamp, ushort windowSize, uint unacknowledged)
@@ -1038,11 +1059,11 @@ namespace KcpSharp
                     };
                     if (node is null)
                     {
-                        _rcvBuf.AddFirst(_cache.Allocate(ref item));
+                        _rcvBuf.AddFirst(_cache.Allocate(in item));
                     }
                     else
                     {
-                        _rcvBuf.AddAfter(node, _cache.Allocate(ref item));
+                        _rcvBuf.AddAfter(node, _cache.Allocate(in item));
                     }
                 }
 

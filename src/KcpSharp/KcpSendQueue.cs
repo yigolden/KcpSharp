@@ -96,6 +96,94 @@ namespace KcpSharp
             }
         }
 
+        public bool TrySend(ReadOnlySpan<byte> buffer, bool allowPartialSend, out int bytesWritten)
+        {
+            lock (_queue)
+            {
+                if (allowPartialSend && !_stream)
+                {
+                    ThrowHelper.ThrowAllowPartialSendArgumentException();
+                }
+                if (_transportClosed || _disposed)
+                {
+                    bytesWritten = 0;
+                    return false;
+                }
+                int mss = _mss;
+                // Make sure there is enough space.
+                if (!allowPartialSend)
+                {
+                    int spaceAvailable = mss * (_capacity - _queue.Count);
+                    if (spaceAvailable < 0)
+                    {
+                        bytesWritten = 0;
+                        return false;
+                    }
+                    if (_stream)
+                    {
+                        LinkedListNodeOfQueueItem? last = _queue.Last;
+                        if (last is not null)
+                        {
+                            spaceAvailable += mss - last.ValueRef.Data.Length;
+                        }
+                    }
+
+                    if (buffer.Length > spaceAvailable)
+                    {
+                        bytesWritten = 0;
+                        return false;
+                    }
+                }
+                // Copy buffer content.
+                bytesWritten = 0;
+                if (_stream)
+                {
+                    LinkedListNodeOfQueueItem? node = _queue.Last;
+                    if (node is not null)
+                    {
+                        ref KcpBuffer data = ref node.ValueRef.Data;
+                        int expand = mss - data.Length;
+                        expand = Math.Min(expand, buffer.Length);
+                        if (expand > 0)
+                        {
+                            data = data.AppendData(buffer.Slice(0, expand));
+                            buffer = buffer.Slice(expand);
+                            Interlocked.Add(ref _unflushedBytes, expand);
+                            bytesWritten = expand;
+                        }
+                    }
+
+                    if (buffer.IsEmpty)
+                    {
+                        return true;
+                    }
+                }
+
+                bool anyFragmentAdded = false;
+                int count = (buffer.Length <= mss) ? 1 : (buffer.Length + mss - 1) / mss;
+                Debug.Assert(count >= 1);
+                while (count > 0 && _queue.Count < _capacity)
+                {
+                    int fragment = --count;
+
+                    int size = buffer.Length > mss ? mss : buffer.Length;
+                    var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Slice(0, size));
+                    buffer = buffer.Slice(size);
+
+                    _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
+                    Interlocked.Add(ref _unflushedBytes, size);
+                    bytesWritten += size;
+                    anyFragmentAdded = true;
+                }
+
+                if (anyFragmentAdded)
+                {
+                    _updateNotification.TrySet(false);
+                }
+                return anyFragmentAdded;
+            }
+        }
+
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
         {
             short token;

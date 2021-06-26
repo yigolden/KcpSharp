@@ -24,7 +24,7 @@ namespace KcpSharp
             };
         }
 
-        public LinkedListNodeOfBufferItem Allocate(ref KcpSendReceiveBufferItem item)
+        public LinkedListNodeOfBufferItem Allocate(in KcpSendReceiveBufferItem item)
         {
             bool lockAcquired = false;
             try
