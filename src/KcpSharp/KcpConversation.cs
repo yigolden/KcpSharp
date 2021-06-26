@@ -222,7 +222,7 @@ namespace KcpSharp
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
-        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             => _sendQueue.SendAsync(buffer, cancellationToken);
 
         /// <summary>
@@ -714,7 +714,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -1165,7 +1165,7 @@ namespace KcpSharp
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before receive operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when the receive queue contains at least one full message, or at least one byte in stream mode. Its result contains the transport state and the size of the available message.</returns>
-        public ValueTask<KcpConversationReceiveResult> WaitToReceiveAsync(CancellationToken cancellationToken)
+        public ValueTask<KcpConversationReceiveResult> WaitToReceiveAsync(CancellationToken cancellationToken = default)
             => _receiveQueue.WaitToReceiveAsync(cancellationToken);
 
         /// <summary>
@@ -1177,7 +1177,7 @@ namespace KcpSharp
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when a full message is moved into <paramref name="buffer"/> or the transport is closed. Its result contains the transport state and the count of bytes written into <paramref name="buffer"/>.</returns>
-        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
 
         /// <inheritdoc />

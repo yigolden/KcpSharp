@@ -144,7 +144,7 @@ namespace KcpSharp
             }
         }
 
-        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
             short token;
             lock (_queue)

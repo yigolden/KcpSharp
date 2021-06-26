@@ -46,7 +46,7 @@ namespace KcpSharp
         /// <param name="packet">The content of the packet with conversation ID.</param>
         /// <param name="cancellationToken">A token to cancel this operation.</param>
         /// <returns>A <see cref="ValueTask"/> that completes when the packet is handled by the corresponding channel or conversation.</returns>
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             ReadOnlySpan<byte> span = packet.Span;
             if (span.Length < 4)
@@ -252,7 +252,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        public ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (_transportClosed || _disposed)
             {

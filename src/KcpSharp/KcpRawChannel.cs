@@ -99,7 +99,7 @@ namespace KcpSharp
         /// <exception cref="InvalidOperationException">The send operation is initiated concurrently.</exception>
         /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
-        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             => _sendOperation.SendAsync(buffer, cancellationToken);
 
         private async Task SendLoopAsync(CancellationTokenSource cts)
@@ -184,7 +184,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             ReadOnlySpan<byte> span = packet.Span;
             if (span.Length < 4 || span.Length > _mtu)
@@ -238,7 +238,7 @@ namespace KcpSharp
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when a message is moved into <paramref name="buffer"/> or the transport is closed. Its result contains the transport state and the count of bytes written into <paramref name="buffer"/>.</returns>
-        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+        public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
 
         /// <inheritdoc />
