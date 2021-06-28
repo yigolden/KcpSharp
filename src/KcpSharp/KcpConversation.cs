@@ -219,11 +219,27 @@ namespace KcpSharp
         /// <param name="buffer">The content of the message.</param>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <exception cref="ArgumentException">The size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
-        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the entire message is put into the queue. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             => _sendQueue.SendAsync(buffer, cancellationToken);
+
+        /// <summary>
+        /// Cancel the current send operation or flush operation.
+        /// </summary>
+        /// <returns>True if the current operation is canceled. False if there is no active send operation.</returns>
+        public bool CancelPendingSend()
+            => _sendQueue.CancelPendingOperation(null, default);
+
+        /// <summary>
+        /// Cancel the current send operation or flush operation.
+        /// </summary>
+        /// <param name="innerException">The inner exception of the <see cref="OperationCanceledException"/> thrown by the <see cref="SendAsync(ReadOnlyMemory{byte}, CancellationToken)"/> method or <see cref="FlushAsync(CancellationToken)"/> method.</param>
+        /// <param name="cancellationToken">The <see cref="CancellationToken"/> in the <see cref="OperationCanceledException"/> thrown by the <see cref="SendAsync(ReadOnlyMemory{byte}, CancellationToken)"/> method or <see cref="FlushAsync(CancellationToken)"/> method.</param>
+        /// <returns>True if the current operation is canceled. False if there is no active send operation.</returns>
+        public bool CancelPendingSend(Exception? innerException, CancellationToken cancellationToken)
+            => _sendQueue.CancelPendingOperation(innerException, cancellationToken);
 
         /// <summary>
         /// Gets the count of bytes not yet sent to the remote host or not acknowledged by the remote host.
@@ -234,7 +250,7 @@ namespace KcpSharp
         /// Wait until all messages are sent and acknowledged by the remote host.
         /// </summary>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
-        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the all messages are sent and acknowledged. The result of the task is false when the transport is closed.</returns>
@@ -1179,6 +1195,22 @@ namespace KcpSharp
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when a full message is moved into <paramref name="buffer"/> or the transport is closed. Its result contains the transport state and the count of bytes written into <paramref name="buffer"/>.</returns>
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
+
+        /// <summary>
+        /// Cancel the current receive operation.
+        /// </summary>
+        /// <returns>True if the current operation is canceled. False if there is no active send operation.</returns>
+        public bool CancelPendingReceive()
+            => _receiveQueue.CancelPendingOperation(null, default);
+
+        /// <summary>
+        /// Cancel the current send operation or flush operation.
+        /// </summary>
+        /// <param name="innerException">The inner exception of the <see cref="OperationCanceledException"/> thrown by the <see cref="ReceiveAsync(Memory{byte}, CancellationToken)"/> method or <see cref="WaitToReceiveAsync(CancellationToken)"/> method.</param>
+        /// <param name="cancellationToken">The <see cref="CancellationToken"/> in the <see cref="OperationCanceledException"/> thrown by the <see cref="ReceiveAsync(Memory{byte}, CancellationToken)"/> method or <see cref="WaitToReceiveAsync(CancellationToken)"/> method.</param>
+        /// <returns>True if the current operation is canceled. False if there is no active send operation.</returns>
+        public bool CancelPendingReceive(Exception? innerException, CancellationToken cancellationToken)
+            => _receiveQueue.CancelPendingOperation(innerException, cancellationToken);
 
         /// <inheritdoc />
         public void SetTransportClosed()

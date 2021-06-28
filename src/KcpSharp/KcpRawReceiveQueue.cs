@@ -194,6 +194,20 @@ namespace KcpSharp
             return new ValueTask<KcpConversationReceiveResult>(this, token);
         }
 
+        public bool CancelPendingOperation(Exception? innerException, CancellationToken cancellationToken)
+        {
+            lock (_queue)
+            {
+                if (_operationOngoing)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetException(ThrowHelper.NewOperationCanceledExceptionForCancelPendingReceive(innerException, cancellationToken));
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private void SetCanceled()
         {
             lock (_queue)

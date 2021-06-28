@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 
 namespace KcpSharp
 {
@@ -27,6 +28,14 @@ namespace KcpSharp
         public static Exception NewConcurrentReceiveException()
         {
             return new InvalidOperationException("Concurrent receive operations are not allowed.");
+        }
+        public static Exception NewOperationCanceledExceptionForCancelPendingSend(Exception? innerException, CancellationToken cancellationToken)
+        {
+            return new OperationCanceledException("This operation is cancelled by a call to CancelPendingSend.", innerException, cancellationToken);
+        }
+        public static Exception NewOperationCanceledExceptionForCancelPendingReceive(Exception? innerException, CancellationToken cancellationToken)
+        {
+            return new OperationCanceledException("This operation is cancelled by a call to CancelPendingReceive.", innerException, cancellationToken);
         }
         public static void ThrowConcurrentReceiveException()
         {

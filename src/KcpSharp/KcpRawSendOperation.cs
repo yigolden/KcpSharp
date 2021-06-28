@@ -61,7 +61,20 @@ namespace KcpSharp
 
             _notification.Set(buffer.Length);
             return new ValueTask<bool>(this, token);
+        }
 
+        public bool CancelPendingOperation(Exception? innerException, CancellationToken cancellationToken)
+        {
+            lock (this)
+            {
+                if (_operationOngoing)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetException(ThrowHelper.NewOperationCanceledExceptionForCancelPendingSend(innerException, cancellationToken));
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void SetCanceled()
