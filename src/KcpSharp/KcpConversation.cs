@@ -254,7 +254,7 @@ namespace KcpSharp
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         /// <exception cref="ObjectDisposedException">The <see cref="KcpConversation"/> instance is disposed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the all messages are sent and acknowledged. The result of the task is false when the transport is closed.</returns>
-        public ValueTask<bool> FlushAsync(CancellationToken cancellationToken)
+        public ValueTask<bool> FlushAsync(CancellationToken cancellationToken = default)
             => _sendQueue.FlushAsync(cancellationToken);
 
         private int Check(uint current)
