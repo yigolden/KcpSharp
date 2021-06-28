@@ -55,11 +55,11 @@ namespace KcpSharp
         }
 
         /// <summary>
-        /// 
+        /// Create a socket transport for multiplex connection.
         /// </summary>
-        /// <param name="socket"></param>
-        /// <param name="endPoint"></param>
-        /// <param name="mtu"></param>
+        /// <param name="socket">The socket instance.</param>
+        /// <param name="endPoint">The remote endpoint.</param>
+        /// <param name="mtu">The maximum packet size that can be transmitted over the socket.</param>
         /// <returns></returns>
         public static IKcpTransport<IKcpMultiplexConnection> CreateMultiplexConnection(Socket socket, EndPoint endPoint, int mtu)
         {
@@ -76,12 +76,12 @@ namespace KcpSharp
         }
 
         /// <summary>
-        /// 
+        /// Create a socket transport for multiplex connection.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="socket"></param>
-        /// <param name="endPoint"></param>
-        /// <param name="mtu"></param>
+        /// <typeparam name="T">The type of the user state.</typeparam>
+        /// <param name="socket">The socket instance.</param>
+        /// <param name="endPoint">The remote endpoint.</param>
+        /// <param name="mtu">The maximum packet size that can be transmitted over the socket.</param>
         /// <returns></returns>
         public static IKcpTransport<IKcpMultiplexConnection<T>> CreateMultiplexConnection<T>(Socket socket, EndPoint endPoint, int mtu)
         {
@@ -95,6 +95,29 @@ namespace KcpSharp
             }
 
             return new KcpSocketTransportForMultiplexConnection<T>(socket, endPoint, mtu);
+        }
+
+        /// <summary>
+        /// Create a socket transport for multiplex connection.
+        /// </summary>
+        /// <typeparam name="T">The type of the user state.</typeparam>
+        /// <param name="socket">The socket instance.</param>
+        /// <param name="endPoint">The remote endpoint.</param>
+        /// <param name="mtu">The maximum packet size that can be transmitted over the socket.</param>
+        /// <param name="disposeAction">The action to invoke when state object is removed.</param>
+        /// <returns></returns>
+        public static IKcpTransport<IKcpMultiplexConnection<T>> CreateMultiplexConnection<T>(Socket socket, EndPoint endPoint, int mtu, Action<T?>? disposeAction)
+        {
+            if (socket is null)
+            {
+                throw new ArgumentNullException(nameof(socket));
+            }
+            if (endPoint is null)
+            {
+                throw new ArgumentNullException(nameof(endPoint));
+            }
+
+            return new KcpSocketTransportForMultiplexConnection<T>(socket, endPoint, mtu, disposeAction);
         }
     }
 }

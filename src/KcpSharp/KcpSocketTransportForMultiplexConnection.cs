@@ -6,6 +6,7 @@ namespace KcpSharp
 {
     internal sealed class KcpSocketTransportForMultiplexConnection<T> : KcpSocketTransport<KcpMultiplexConnection<T>>, IKcpTransport<IKcpMultiplexConnection<T>>
     {
+        private readonly Action<T?>? _disposeAction;
         private Func<Exception, IKcpTransport<IKcpMultiplexConnection<T>>, object?, bool>? _exceptionHandler;
         private object? _exceptionHandlerState;
 
@@ -13,7 +14,13 @@ namespace KcpSharp
             : base(socket, endPoint, mtu)
         { }
 
-        protected override KcpMultiplexConnection<T> Activate() => new KcpMultiplexConnection<T>(this);
+        internal KcpSocketTransportForMultiplexConnection(Socket socket, EndPoint endPoint, int mtu, Action<T?>? disposeAction)
+            : base(socket, endPoint, mtu)
+        {
+            _disposeAction = disposeAction;
+        }
+
+        protected override KcpMultiplexConnection<T> Activate() => new KcpMultiplexConnection<T>(this, _disposeAction);
 
         IKcpMultiplexConnection<T> IKcpTransport<IKcpMultiplexConnection<T>>.Connection => Connection;
 

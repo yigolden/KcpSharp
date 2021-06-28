@@ -18,6 +18,8 @@ namespace KcpSharp
         private bool _transportClosed;
         private bool _disposed;
 
+        private readonly Action<T?>? _disposeAction;
+
         /// <summary>
         /// Construct a multiplexed connection over a transport.
         /// </summary>
@@ -25,6 +27,18 @@ namespace KcpSharp
         public KcpMultiplexConnection(IKcpTransport transport)
         {
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            _disposeAction = null;
+        }
+
+        /// <summary>
+        /// Construct a multiplexed connection over a transport.
+        /// </summary>
+        /// <param name="transport">The underlying transport.</param>
+        /// <param name="disposeAction">The action to invoke when state object is removed.</param>
+        public KcpMultiplexConnection(IKcpTransport transport, Action<T?>? disposeAction)
+        {
+            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            _disposeAction = disposeAction;
         }
 
         private void CheckDispose()
@@ -218,7 +232,10 @@ namespace KcpSharp
             }
             if (_disposed)
             {
-                _conversations.TryRemove(id, out _);
+                if (_conversations.TryRemove(id, out (IKcpConversation Conversation, T? State) value) && _disposeAction is not null)
+                {
+                    _disposeAction.Invoke(value.State);
+                }
                 ThrowObjectDisposedException();
             }
         }
@@ -245,6 +262,10 @@ namespace KcpSharp
             {
                 value.Conversation.SetTransportClosed();
                 state = value.State;
+                if (_disposeAction is not null)
+                {
+                    _disposeAction.Invoke(state);
+                }
                 return value.Conversation;
             }
             state = default;
@@ -280,11 +301,20 @@ namespace KcpSharp
             }
             _transportClosed = true;
             _disposed = true;
-            foreach ((IKcpConversation conversation, T? _) in _conversations.Values)
+            while (!_conversations.IsEmpty)
             {
-                conversation.Dispose();
+                foreach (int id in _conversations.Keys)
+                {
+                    if (_conversations.TryRemove(id, out (IKcpConversation Conversation, T? State) value))
+                    {
+                        value.Conversation.Dispose();
+                        if (_disposeAction is not null)
+                        {
+                            _disposeAction.Invoke(value.State);
+                        }
+                    }
+                }
             }
-            _conversations.Clear();
         }
     }
 }
