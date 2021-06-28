@@ -80,6 +80,17 @@ namespace KcpSharp
         }
 
         /// <summary>
+        /// Determine whether the multiplex connection contains a conversation with the specified id.
+        /// </summary>
+        /// <param name="id">The conversation ID.</param>
+        /// <returns>True if the multiplex connection contains the specified conversation. Otherwise false.</returns>
+        public bool Contains(int id)
+        {
+            CheckDispose();
+            return _conversations.ContainsKey(id);
+        }
+
+        /// <summary>
         /// Create a raw channel with the specified conversation ID.
         /// </summary>
         /// <param name="id">The conversation ID.</param>
