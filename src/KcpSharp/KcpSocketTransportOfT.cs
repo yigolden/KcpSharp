@@ -241,7 +241,7 @@ namespace KcpSharp
 
                     if (bytesReceived != 0 && bytesReceived <= _mtu)
                     {
-                        await connection.OnReceivedAsync(memory.Slice(0, bytesReceived), cancellationToken).ConfigureAwait(false);
+                        await connection.InputPakcetAsync(memory.Slice(0, bytesReceived), cancellationToken).ConfigureAwait(false);
                     }
                 }
             }

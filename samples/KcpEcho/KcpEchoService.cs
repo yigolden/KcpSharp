@@ -30,7 +30,7 @@ namespace KcpEcho
             => _sender.SendPacketAsync(_endPoint, packet, cancellationToken);
 
         ValueTask IUdpService.InputPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
-            => _conversation.OnReceivedAsync(packet, cancellationToken);
+            => _conversation.InputPakcetAsync(packet, cancellationToken);
 
         void IUdpService.SetTransportClosed()
             => _conversation.SetTransportClosed();

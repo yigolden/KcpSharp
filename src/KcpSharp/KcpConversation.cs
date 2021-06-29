@@ -730,7 +730,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public ValueTask InputPakcetAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (cancellationToken.IsCancellationRequested)
             {
