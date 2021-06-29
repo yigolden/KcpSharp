@@ -97,7 +97,7 @@ namespace KcpSharp.Tests
 
         public async Task PutPacketAsync(byte[] packet, CancellationToken cancellationToken)
         {
-            await ((IKcpConversation)_conversation).OnReceivedAsync(packet, cancellationToken).ConfigureAwait(false);
+            await ((IKcpConversation)_conversation).InputPakcetAsync(packet, cancellationToken).ConfigureAwait(false);
         }
     }
 }

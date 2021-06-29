@@ -35,7 +35,7 @@ namespace KcpTunnel
                     ProcessNewConnection(id);
                 }
             }
-            return _connection.OnReceivedAsync(packet, cancellationToken);
+            return _connection.InputPakcetAsync(packet, cancellationToken);
         }
 
         public void Start()

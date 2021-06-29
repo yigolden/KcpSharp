@@ -15,7 +15,7 @@ namespace KcpSharp
         /// <param name="packet">The packet content with conversation ID.</param>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <returns>A <see cref="ValueTask"/> that completes when the packet is put into the receive queue.</returns>
-        ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken);
+        ValueTask InputPakcetAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken);
 
         /// <summary>
         /// Mark the underlying transport as closed. Abort all active send or receive operations.

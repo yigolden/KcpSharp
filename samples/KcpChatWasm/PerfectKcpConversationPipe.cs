@@ -83,7 +83,7 @@ namespace KcpChatWasm
 
         public async Task PutPacketAsync(byte[] packet, CancellationToken cancellationToken)
         {
-            await _conversation.OnReceivedAsync(packet, cancellationToken).ConfigureAwait(false);
+            await _conversation.InputPakcetAsync(packet, cancellationToken).ConfigureAwait(false);
         }
     }
 }

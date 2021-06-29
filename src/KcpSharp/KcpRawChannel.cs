@@ -202,7 +202,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public ValueTask InputPakcetAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             ReadOnlySpan<byte> span = packet.Span;
             if (span.Length < 4 || span.Length > _mtu)

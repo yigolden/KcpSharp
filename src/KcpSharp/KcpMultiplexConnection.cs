@@ -60,7 +60,7 @@ namespace KcpSharp
         /// <param name="packet">The content of the packet with conversation ID.</param>
         /// <param name="cancellationToken">A token to cancel this operation.</param>
         /// <returns>A <see cref="ValueTask"/> that completes when the packet is handled by the corresponding channel or conversation.</returns>
-        public ValueTask OnReceivedAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public ValueTask InputPakcetAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             ReadOnlySpan<byte> span = packet.Span;
             if (span.Length < 4)
@@ -74,7 +74,7 @@ namespace KcpSharp
             int id = (int)BinaryPrimitives.ReadUInt32LittleEndian(span);
             if (_conversations.TryGetValue(id, out (IKcpConversation Conversation, T? State) value))
             {
-                return value.Conversation.OnReceivedAsync(packet, cancellationToken);
+                return value.Conversation.InputPakcetAsync(packet, cancellationToken);
             }
             return default;
         }
