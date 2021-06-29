@@ -71,9 +71,9 @@ namespace KcpTunnel
             }
             finally
             {
-                _connection.UnregisterConversation(_conversation.ConversationId)?.Dispose();
+                _connection.UnregisterConversation(_conversation.ConversationId.GetValueOrDefault())?.Dispose();
                 _conversation.Dispose();
-                _idPool.Return((ushort)_conversation.ConversationId);
+                _idPool.Return((ushort)_conversation.ConversationId.GetValueOrDefault());
                 Console.WriteLine("Conversation closed: " + _conversation.ConversationId);
             }
         }
