@@ -3,10 +3,10 @@
   <PropertyGroup Label="Package Versions">
     <SystemCommandLinePackageVersion>2.0.0-beta1.21216.1</SystemCommandLinePackageVersion>
 
-    <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0-preview.5.21301.5</MicrosoftBclAsyncInterfacesPackageVersion>
+    <MicrosoftBclAsyncInterfacesPackageVersion>5.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
     <SystemMemoryPackageVersion>4.5.4</SystemMemoryPackageVersion>
-    <SystemRuntimeCompilerServicesUnsafePackageVersion>6.0.0-preview.5.21301.5</SystemRuntimeCompilerServicesUnsafePackageVersion>
+    <SystemRuntimeCompilerServicesUnsafePackageVersion>5.0.0</SystemRuntimeCompilerServicesUnsafePackageVersion>
     <SystemThreadingTasksExtensionsPackageVersion>4.5.4</SystemThreadingTasksExtensionsPackageVersion>
   </PropertyGroup>
 </Project>
