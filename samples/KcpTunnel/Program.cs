@@ -5,14 +5,14 @@ using System.CommandLine.Parsing;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace KcpEcho
+namespace KcpTunnel
 {
     internal static class Program
     {
         static async Task<int> Main(string[] args)
         {
             var builder = new CommandLineBuilder();
-            builder.Command.Description = "KcpEcho";
+            builder.Command.Description = "KcpTunnel";
 
             builder.Command.AddCommand(BuildServerCommand());
             builder.Command.AddCommand(BuildClientCommand());
@@ -32,40 +32,39 @@ namespace KcpEcho
         {
             var command = new Command("server", "Run server side.");
             command.AddOption(ListenOption());
+            command.AddOption(TcpForwardOption());
             command.AddOption(MtuOption());
-            command.AddOption(ConversationOption());
-            command.Handler = CommandHandler.Create<string, int, uint, CancellationToken>(KcpEchoServer.RunAsync);
+            command.Handler = CommandHandler.Create<string, string, int, CancellationToken>(KcpTunnelServerProgram.RunAsync);
             return command;
 
             Option ListenOption() =>
                 new Option<string>("--listen", "Endpoint where the server listens.", ArgumentArity.ExactlyOne);
 
-            Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
+            Option TcpForwardOption() =>
+                new Option<string>("--tcp-forward", "The TCP endpoint to forward to.", ArgumentArity.ExactlyOne);
 
-            Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID. [0]");
+            Option MtuOption() =>
+                new Option<int>("--mtu", () => 1400, "MTU.");
         }
 
         static Command BuildClientCommand()
         {
             var command = new Command("client", "Run client side.");
             command.AddOption(EndpointOption());
+            command.AddOption(TcpListenOption());
             command.AddOption(MtuOption());
-            command.AddOption(ConversationOption());
-            command.Handler = CommandHandler.Create<string, int, uint, CancellationToken>(KcpEchoClient.RunAsync);
+            command.Handler = CommandHandler.Create<string, string, int, CancellationToken>(KcpTunnelClientProgram.RunAsync);
             return command;
 
             Option EndpointOption() =>
                 new Option<string>("--endpoint", "Endpoint which the client connects to.", ArgumentArity.ExactlyOne);
 
+            Option TcpListenOption() =>
+                new Option<string>("--tcp-listen", "The TCP endpoint to listen on.", ArgumentArity.ExactlyOne);
+
             Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
-
-            Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID. [0]");
-
+                new Option<int>("--mtu", () => 1400, "MTU.");
         }
-    }
 
+    }
 }
