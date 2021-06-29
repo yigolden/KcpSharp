@@ -82,7 +82,7 @@ namespace KcpSharp
         /// <summary>
         /// Get the ID of the current conversation.
         /// </summary>
-        public int ConversationId => (int)_id;
+        public int? ConversationId => (int)_id;
 
         /// <summary>
         /// Get whether the transport is marked as closed.
