@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
-  <PropertyGroup Label="Package Versions">
+  <PropertyGroup Label="Validation Versions">
+    <PreviouslyPublishedPackageVersion>0.2.53</PreviouslyPublishedPackageVersion>
+  </PropertyGroup>
+  <PropertyGroup Label="Dependency Versions">
     <SystemCommandLinePackageVersion>2.0.0-beta1.21216.1</SystemCommandLinePackageVersion>
 
     <NerdbankGitVersioningPackageVersion>3.4.220</NerdbankGitVersioningPackageVersion>
+    <MicrosoftDotNetPackageValidationPackageVersion>1.0.0-preview.5.21302.8</MicrosoftDotNetPackageValidationPackageVersion>
 
     <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0-preview.5.21301.5</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
