@@ -4,34 +4,34 @@ namespace KcpSharp.Tests
 {
     internal static class KcpConversationFactory
     {
+        public static KcpConversationPipe CreatePerfectPipe(uint conversationId)
+        {
+            return new PerfectKcpConversationPipe(conversationId, null, null);
+        }
+
+        public static KcpConversationPipe CreatePerfectPipe(uint conversationId, KcpConversationOptions? options)
+        {
+            return new PerfectKcpConversationPipe(conversationId, options, options);
+        }
+
         public static KcpConversationPipe CreatePerfectPipe()
         {
-            return new PerfectKcpConversationPipe(1, null, null);
+            return new PerfectKcpConversationPipe(null, null, null);
         }
 
         public static KcpConversationPipe CreatePerfectPipe(KcpConversationOptions? options)
         {
-            return new PerfectKcpConversationPipe(1, options, options);
+            return new PerfectKcpConversationPipe(null, options, options);
         }
 
-        public static KcpConversationPipe CreatePerfectPipe(KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
+        public static KcpConversationPipe CreateBadPipe(uint conversationId, BadOneWayConnectionOptions connectionOptions)
         {
-            return new PerfectKcpConversationPipe(1, aliceOptions, bobOptions);
+            return new BadKcpConversationPipe(conversationId, connectionOptions, null, null);
         }
 
-        public static KcpConversationPipe CreateBadPipe(BadOneWayConnectionOptions connectionOptions)
+        public static KcpConversationPipe CreateBadPipe(uint conversationId, BadOneWayConnectionOptions connectionOptions, KcpConversationOptions? options)
         {
-            return new BadKcpConversationPipe(1, connectionOptions, null, null);
-        }
-
-        public static KcpConversationPipe CreateBadPipe(BadOneWayConnectionOptions connectionOptions, KcpConversationOptions? options)
-        {
-            return new BadKcpConversationPipe(1, connectionOptions, options, options);
-        }
-
-        public static KcpConversationPipe CreateBadPipe(BadOneWayConnectionOptions connectionOptions, KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
-        {
-            return new BadKcpConversationPipe(1, connectionOptions, aliceOptions, bobOptions);
+            return new BadKcpConversationPipe(conversationId, connectionOptions, options, options);
         }
     }
 

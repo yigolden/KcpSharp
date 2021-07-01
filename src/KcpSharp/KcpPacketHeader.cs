@@ -39,11 +39,7 @@ namespace KcpSharp
 
         public static KcpPacketHeader Parse(ReadOnlySpan<byte> buffer)
         {
-            if (buffer.Length < 16)
-            {
-                ThrowArgumentExceptionBufferTooSmall();
-            }
-
+            Debug.Assert(buffer.Length >= 16);
             return new KcpPacketHeader(
                 (KcpCommand)buffer[0],
                 buffer[1],
@@ -54,22 +50,27 @@ namespace KcpSharp
                 );
         }
 
-        internal void EncodeHeader(uint conversationId, int payloadLength, Span<byte> destination)
+        internal void EncodeHeader(uint? conversationId, int payloadLength, Span<byte> destination, out int bytesWritten)
         {
-            Debug.Assert(destination.Length >= 24);
-            BinaryPrimitives.WriteUInt32LittleEndian(destination, conversationId);
-            destination[4] = (byte)Command;
-            destination[5] = Fragment;
-            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(6), WindowSize);
-            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(8), Timestamp);
-            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(12), SerialNumber);
-            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(16), Unacknowledged);
-            BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(20), payloadLength);
-        }
-
-        private static void ThrowArgumentExceptionBufferTooSmall()
-        {
-            throw new ArgumentException("buffer is too small", "buffer");
+            Debug.Assert(destination.Length >= 20);
+            if (conversationId.HasValue)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(destination, conversationId.GetValueOrDefault());
+                destination = destination.Slice(4);
+                bytesWritten = 24;
+            }
+            else
+            {
+                bytesWritten = 20;
+            }
+            Debug.Assert(destination.Length >= 20);
+            destination[1] = Fragment;
+            destination[0] = (byte)Command;
+            BinaryPrimitives.WriteUInt16LittleEndian(destination.Slice(2), WindowSize);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(4), Timestamp);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(8), SerialNumber);
+            BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(12), Unacknowledged);
+            BinaryPrimitives.WriteInt32LittleEndian(destination.Slice(16), payloadLength);
         }
     }
 }

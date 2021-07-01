@@ -153,7 +153,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
+                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
                     byte[] bigFile = new byte[fileSize];
                     Random.Shared.NextBytes(bigFile);
@@ -186,7 +186,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
+                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
                     Task<bool> sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                     await Task.Delay(2000, cancellationToken);

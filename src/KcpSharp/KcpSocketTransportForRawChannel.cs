@@ -6,21 +6,21 @@ namespace KcpSharp
 {
     internal sealed class KcpSocketTransportForRawChannel : KcpSocketTransport<KcpRawChannel>, IKcpTransport<KcpRawChannel>
     {
-        private readonly int _conversationId;
+        private readonly int? _conversationId;
         private readonly KcpRawChannelOptions? _options;
 
         private Func<Exception, IKcpTransport<KcpRawChannel>, object?, bool>? _exceptionHandler;
         private object? _exceptionHandlerState;
 
 
-        internal KcpSocketTransportForRawChannel(Socket socket, EndPoint endPoint, int conversationId, KcpRawChannelOptions? options)
+        internal KcpSocketTransportForRawChannel(Socket socket, EndPoint endPoint, int? conversationId, KcpRawChannelOptions? options)
             : base(socket, endPoint, options?.Mtu ?? KcpConversationOptions.MtuDefaultValue)
         {
             _conversationId = conversationId;
             _options = options;
         }
 
-        protected override KcpRawChannel Activate() => new KcpRawChannel(this, _conversationId, _options);
+        protected override KcpRawChannel Activate() => _conversationId.HasValue ? new KcpRawChannel(this, _conversationId.GetValueOrDefault(), _options) : new KcpRawChannel(this, _options);
 
         protected override bool HandleException(Exception ex)
         {

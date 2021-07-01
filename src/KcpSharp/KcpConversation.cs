@@ -21,8 +21,8 @@ namespace KcpSharp
     public sealed class KcpConversation : IKcpConversation, IKcpExceptionProducer<KcpConversation>
     {
         private readonly IKcpBufferAllocator _allocator;
-        private readonly IKcpTransport _connection;
-        private readonly uint _id;
+        private readonly IKcpTransport _transport;
+        private readonly uint? _id;
 
         private readonly int _mtu;
         private readonly int _mss;
@@ -87,17 +87,31 @@ namespace KcpSharp
         private const uint IKCP_PROBE_INIT = 7000;       // 7 secs to probe window size
         private const uint IKCP_PROBE_LIMIT = 120000;    // up to 120 secs to probe window
 
+
         /// <summary>
         /// Construct a reliable channel using KCP protocol.
         /// </summary>
-        /// <param name="connection">The underlying transport.</param>
+        /// <param name="transport">The underlying transport.</param>
+        /// <param name="options">The options of the <see cref="KcpConversation"/>.</param>
+        public KcpConversation(IKcpTransport transport, KcpConversationOptions? options)
+            : this(transport, null, options)
+        { }
+
+        /// <summary>
+        /// Construct a reliable channel using KCP protocol.
+        /// </summary>
+        /// <param name="transport">The underlying transport.</param>
         /// <param name="conversationId">The conversation ID.</param>
         /// <param name="options">The options of the <see cref="KcpConversation"/>.</param>
-        public KcpConversation(IKcpTransport connection, int conversationId, KcpConversationOptions? options)
+        public KcpConversation(IKcpTransport transport, int conversationId, KcpConversationOptions? options)
+            : this(transport, (uint)conversationId, options)
+        { }
+
+        private KcpConversation(IKcpTransport transport, uint? conversationId, KcpConversationOptions? options)
         {
             _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
-            _connection = connection;
-            _id = (uint)conversationId;
+            _transport = transport;
+            _id = conversationId;
 
             if (options is null)
             {
@@ -112,7 +126,7 @@ namespace KcpSharp
                 _mtu = options.Mtu;
             }
 
-            _mss = _mtu - 24;
+            _mss = conversationId.HasValue ? _mtu - 24 : _mtu - 20;
 
             _ssthresh = 2;
 
@@ -175,7 +189,7 @@ namespace KcpSharp
         /// <summary>
         /// Get the ID of the current conversation.
         /// </summary>
-        public int? ConversationId => (int)_id;
+        public int? ConversationId => (int?)_id;
 
         /// <summary>
         /// Get whether the transport is marked as closed.
@@ -301,6 +315,8 @@ namespace KcpSharp
 
         private async Task FlushCoreAsync(CancellationToken cancellationToken)
         {
+            int packetHeaderSize = _id.HasValue ? 24 : 20;
+
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
 
@@ -313,14 +329,14 @@ namespace KcpSharp
                 int index = 0;
                 while (_ackList.TryGetAt(index++, out uint serialNumber, out uint timestamp))
                 {
-                    if ((size + 24) > _mtu)
+                    if ((size + packetHeaderSize) > _mtu)
                     {
-                        await _connection.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
+                        await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
                         size = 0;
                     }
                     var header = new KcpPacketHeader(KcpCommand.Ack, 0, windowSize, timestamp, serialNumber, unacknowledged);
-                    header.EncodeHeader(_id, 0, buffer.Span.Slice(size));
-                    size += 24;
+                    header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
+                    size += bytesWritten;
                 }
 
                 _ackList.Clear();
@@ -363,27 +379,27 @@ namespace KcpSharp
             // flush window probing commands
             if ((_probe & KcpProbeType.AskSend) != 0)
             {
-                if ((size + 24) > _mtu)
+                if ((size + packetHeaderSize) > _mtu)
                 {
-                    await _connection.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
+                    await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
                     size = 0;
                 }
                 var header = new KcpPacketHeader(KcpCommand.WindowProbe, 0, windowSize, 0, 0, unacknowledged);
-                header.EncodeHeader(_id, 0, buffer.Span.Slice(size));
-                size += 24;
+                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
+                size += bytesWritten;
             }
 
             // flush window probing commands
             if ((_probe & KcpProbeType.AskTell) != 0)
             {
-                if ((size + 24) > _mtu)
+                if ((size + packetHeaderSize) > _mtu)
                 {
-                    await _connection.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
+                    await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
                     size = 0;
                 }
                 var header = new KcpPacketHeader(KcpCommand.WindowSize, 0, windowSize, 0, 0, unacknowledged);
-                header.EncodeHeader(_id, 0, buffer.Span.Slice(size));
-                size += 24;
+                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
+                size += bytesWritten;
             }
 
             _probe = KcpProbeType.None;
@@ -479,16 +495,16 @@ namespace KcpSharp
                     KcpBuffer data = segmentNode.ValueRef.Data;
                     KcpPacketHeader header = DeplicateHeader(ref segmentNode.ValueRef.Segment, current, windowSize, unacknowledged);
 
-                    int need = 24 + data.Length;
+                    int need = packetHeaderSize + data.Length;
                     if ((size + need) > _mtu)
                     {
-                        await _connection.SendPacketAsync(buffer.Slice(0, size), CancellationToken.None).ConfigureAwait(false);
+                        await _transport.SendPacketAsync(buffer.Slice(0, size), CancellationToken.None).ConfigureAwait(false);
                         size = 0;
                     }
 
-                    header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size));
+                    header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
 
-                    size += 24;
+                    size += bytesWritten;
 
                     if (data.Length > 0)
                     {
@@ -509,7 +525,7 @@ namespace KcpSharp
             // flush remaining segments
             if (size > 0)
             {
-                await _connection.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
+                await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
             }
 
             {
@@ -736,24 +752,30 @@ namespace KcpSharp
             {
                 return new ValueTask(Task.FromCanceled(cancellationToken));
             }
-            if (packet.Length < 24)
+            int packetHeaderSize = _id.HasValue ? 24 : 20;
+            if (packet.Length < packetHeaderSize)
             {
                 return default;
             }
 
             ReadOnlySpan<byte> packetSpan = packet.Span;
-            uint conversationId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Span);
-            if (conversationId != _id)
+            if (_id.HasValue)
             {
-                return default;
+                uint conversationId = BinaryPrimitives.ReadUInt32LittleEndian(packet.Span);
+                if (conversationId != _id.GetValueOrDefault())
+                {
+                    return default;
+                }
+                packetSpan = packetSpan.Slice(4);
             }
-            uint length = BinaryPrimitives.ReadUInt32LittleEndian(packet.Span.Slice(20));
-            if (length > (uint)(packetSpan.Length - 24)) // implicitly checked for (int)length < 0
+
+            uint length = BinaryPrimitives.ReadUInt32LittleEndian(packetSpan.Slice(16));
+            if (length > (uint)(packetSpan.Length - 20)) // implicitly checked for (int)length < 0
             {
                 return default;
             }
 
-            OnReceivedCore(packetSpan);
+            OnReceivedCore(packet.Span); // do not use packetSpan here, because SetInput will also check for conversation id
             return default;
         }
 
@@ -776,25 +798,32 @@ namespace KcpSharp
 
         private void SetInput(ReadOnlySpan<byte> packet)
         {
+            int packetHeaderSize = _id.HasValue ? 24 : 20;
+
             uint prev_una = _snd_una;
             uint maxack = 0, latest_ts = 0;
             bool flag = false;
 
             while (true)
             {
-                if (packet.Length < 24)
+                if (packet.Length < packetHeaderSize)
                 {
                     break;
                 }
 
-                if (BinaryPrimitives.ReadUInt32LittleEndian(packet) != _id)
+                if (_id.HasValue)
                 {
-                    return;
+                    if (BinaryPrimitives.ReadUInt32LittleEndian(packet) != _id.GetValueOrDefault())
+                    {
+                        return;
+                    }
+                    packet = packet.Slice(4);
                 }
-                var header = KcpPacketHeader.Parse(packet.Slice(4));
-                int length = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(20));
 
-                packet = packet.Slice(24);
+                var header = KcpPacketHeader.Parse(packet);
+                int length = BinaryPrimitives.ReadInt32LittleEndian(packet.Slice(16));
+
+                packet = packet.Slice(20);
                 if ((uint)length > (uint)packet.Length)
                 {
                     return;

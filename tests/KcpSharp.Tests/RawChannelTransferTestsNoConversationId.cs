@@ -7,7 +7,7 @@ using Xunit;
 
 namespace KcpSharp.Tests
 {
-    public class RawChannelTransferTests
+    public class RawChannelTransferTestsNoConversationId
     {
         [InlineData(64, 1000, 1200, false)]
         [InlineData(64, 1000, 1200, true)]
@@ -25,7 +25,7 @@ namespace KcpSharp.Tests
 
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
             {
-                using KcpRawDuplexChannel pipe = KcpRawDuplexChannelFactory.CreateDuplexChannel(0x12345678, new KcpRawChannelOptions { ReceiveQueueSize = packetCount });
+                using KcpRawDuplexChannel pipe = KcpRawDuplexChannelFactory.CreateDuplexChannel(new KcpRawChannelOptions { ReceiveQueueSize = packetCount });
 
                 Assert.False(pipe.Bob.TryPeek(out KcpConversationReceiveResult result));
                 Assert.False(result.TransportClosed, "Transport should not be closed.");

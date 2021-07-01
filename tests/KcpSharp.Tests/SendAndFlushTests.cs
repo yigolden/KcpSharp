@@ -12,7 +12,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
                 Assert.True(await pipe.Alice.FlushAsync(cancellationToken));
             });
         }
@@ -22,7 +22,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
                 pipe.Alice.Dispose();
                 Assert.False(await pipe.Alice.FlushAsync(cancellationToken));
             });
@@ -33,7 +33,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
                 pipe.Alice.SetTransportClosed();
                 Assert.False(await pipe.Alice.FlushAsync(cancellationToken));
             });
@@ -44,7 +44,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
                 Assert.Equal(0, pipe.Alice.UnflushedBytes);
                 for (int i = 0; i < 6; i++)
                 {
@@ -60,7 +60,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(15), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { SendWindow = 2, ReceiveWindow = 2, RemoteReceiveWindow = 2, SendQueueSize = 2, UpdateInterval = 10, NoDelay = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendWindow = 2, ReceiveWindow = 2, RemoteReceiveWindow = 2, SendQueueSize = 2, UpdateInterval = 10, NoDelay = true });
 
                 await SendPackets(pipe.Alice, 4, cancellationToken);
                 Task flushTask = pipe.Alice.FlushAsync(cancellationToken).AsTask();

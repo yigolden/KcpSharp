@@ -7,7 +7,7 @@ using Xunit;
 
 namespace KcpSharp.Tests
 {
-    public class PerfectUnidirectionalTransferTests
+    public class ConversationPerfectUnidirectionalTransferTests
     {
         [InlineData(false)]
         [InlineData(true)]
@@ -16,7 +16,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
 
                 KcpConversationReceiveResult result;
                 Assert.False(pipe.Bob.TryPeek(out result));
@@ -54,7 +54,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = stream });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { UpdateInterval = 30, StreamMode = stream });
 
                 Task<KcpConversationReceiveResult> receiveTask = pipe.Bob.ReceiveAsync(default, cancellationToken).AsTask();
                 Assert.False(receiveTask.IsCompleted);
@@ -86,7 +86,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
 
                 Assert.True(await pipe.Alice.SendAsync(default, cancellationToken));
                 KcpConversationReceiveResult result;
@@ -108,7 +108,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { UpdateInterval = 30, StreamMode = true });
 
                 Task<KcpConversationReceiveResult> receiveTask = pipe.Bob.ReceiveAsync(default, cancellationToken).AsTask();
                 await Task.Delay(500, cancellationToken);
@@ -130,7 +130,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { UpdateInterval = 30, StreamMode = true });
 
                 byte[] buffer = new byte[2000];
                 Random.Shared.NextBytes(buffer);
@@ -179,7 +179,7 @@ namespace KcpSharp.Tests
 
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30 });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30 });
 
                 Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                 Task receiveTask = ReceiveMultiplePacketsAsync(pipe.Bob, packets, maxPacketSize, waitToReceive, cancellationToken);
@@ -233,7 +233,7 @@ namespace KcpSharp.Tests
             Assert.True(receiveBufferSize < fileSize);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(15), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { SendQueueSize = 16, SendWindow = 8, ReceiveWindow = 8, UpdateInterval = 30, StreamMode = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendQueueSize = 16, SendWindow = 8, ReceiveWindow = 8, UpdateInterval = 30, StreamMode = true });
 
                 byte[] bigFile = new byte[fileSize];
                 Random.Shared.NextBytes(bigFile);
@@ -273,7 +273,7 @@ namespace KcpSharp.Tests
             {
                 const int mtu = 100;
                 const int mss = mtu - 24;
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 100, UpdateInterval = 30, SendQueueSize = 512, SendWindow = 260, ReceiveWindow = 260, RemoteReceiveWindow = 260 });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { Mtu = 100, UpdateInterval = 30, SendQueueSize = 512, SendWindow = 260, ReceiveWindow = 260, RemoteReceiveWindow = 260 });
 
                 byte[] buffer = new byte[256 * mss];
                 Random.Shared.NextBytes(buffer);

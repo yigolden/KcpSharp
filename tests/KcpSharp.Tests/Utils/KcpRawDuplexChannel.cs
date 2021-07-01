@@ -7,21 +7,25 @@ namespace KcpSharp.Tests
 {
     internal static class KcpRawDuplexChannelFactory
     {
+        public static KcpRawDuplexChannel CreateDuplexChannel(uint conversationId)
+        {
+            return new KcpRawDuplexChannel(conversationId, null, null);
+        }
+
+        public static KcpRawDuplexChannel CreateDuplexChannel(uint conversationId, KcpRawChannelOptions? options)
+        {
+            return new KcpRawDuplexChannel(conversationId, options, options);
+        }
+
         public static KcpRawDuplexChannel CreateDuplexChannel()
         {
-            return new KcpRawDuplexChannel(1, null, null);
+            return new KcpRawDuplexChannel(null, null, null);
         }
 
         public static KcpRawDuplexChannel CreateDuplexChannel(KcpRawChannelOptions? options)
         {
-            return new KcpRawDuplexChannel(1, options, options);
+            return new KcpRawDuplexChannel(null, options, options);
         }
-
-        public static KcpRawDuplexChannel CreateDuplexChannel(KcpRawChannelOptions? aliceOptions, KcpRawChannelOptions? bobOptions)
-        {
-            return new KcpRawDuplexChannel(1, aliceOptions, bobOptions);
-        }
-
     }
 
     internal class KcpRawDuplexChannel : IDisposable
@@ -35,7 +39,7 @@ namespace KcpSharp.Tests
         public KcpRawChannel Alice => _alice.Conversation;
         public KcpRawChannel Bob => _bob.Conversation;
 
-        public KcpRawDuplexChannel(uint conversationId, KcpRawChannelOptions? aliceOptions, KcpRawChannelOptions? bobOptions)
+        public KcpRawDuplexChannel(uint? conversationId, KcpRawChannelOptions? aliceOptions, KcpRawChannelOptions? bobOptions)
         {
             _aliceToBobChannel = Channel.CreateUnbounded<byte[]>();
             _bobToAliceChannel = Channel.CreateUnbounded<byte[]>();
@@ -77,9 +81,9 @@ namespace KcpSharp.Tests
         private readonly KcpRawChannel _conversation;
         private readonly ChannelWriter<byte[]> _output;
 
-        public KcpRawOneWayChannel(uint conversationId, ChannelWriter<byte[]> output, KcpRawChannelOptions? options = null)
+        public KcpRawOneWayChannel(uint? conversationId, ChannelWriter<byte[]> output, KcpRawChannelOptions? options = null)
         {
-            _conversation = new KcpRawChannel(this, (int)conversationId, options);
+            _conversation = conversationId.HasValue ? new KcpRawChannel(this, (int)conversationId.GetValueOrDefault(), options) : new KcpRawChannel(this, options);
             _output = output;
         }
 

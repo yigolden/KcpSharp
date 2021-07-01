@@ -16,7 +16,7 @@ namespace KcpSharp.Tests
         public override KcpConversation Alice => _alice.Conversation;
         public override KcpConversation Bob => _bob.Conversation;
 
-        public PerfectKcpConversationPipe(uint conversationId, KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
+        public PerfectKcpConversationPipe(uint? conversationId, KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
         {
             _aliceToBobChannel = Channel.CreateUnbounded<byte[]>();
             _bobToAliceChannel = Channel.CreateUnbounded<byte[]>();
@@ -59,9 +59,9 @@ namespace KcpSharp.Tests
         private KcpConversation _conversation;
         private readonly ChannelWriter<byte[]> _output;
 
-        public PerfectOneWayConnection(uint conversationId, ChannelWriter<byte[]> output, KcpConversationOptions? options = null)
+        public PerfectOneWayConnection(uint? conversationId, ChannelWriter<byte[]> output, KcpConversationOptions? options = null)
         {
-            _conversation = new KcpConversation(this, (int)conversationId, options);
+            _conversation = conversationId.HasValue ? new KcpConversation(this, (int)conversationId.GetValueOrDefault(), options) : new KcpConversation(this, options);
             _output = output;
         }
 

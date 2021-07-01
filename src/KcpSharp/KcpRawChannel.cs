@@ -13,7 +13,7 @@ namespace KcpSharp
     {
         private readonly IKcpBufferAllocator _allocator;
         private readonly IKcpTransport _transport;
-        private readonly uint _id;
+        private readonly uint? _id;
         private readonly int _mtu;
 
         private CancellationTokenSource? _sendLoopCts;
@@ -28,13 +28,26 @@ namespace KcpSharp
         /// Construct a unreliable channel with a conversation ID.
         /// </summary>
         /// <param name="transport">The underlying transport.</param>
+        /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
+        public KcpRawChannel(IKcpTransport transport, KcpRawChannelOptions? options)
+            : this(transport, null, options)
+        { }
+
+        /// <summary>
+        /// Construct a unreliable channel with a conversation ID.
+        /// </summary>
+        /// <param name="transport">The underlying transport.</param>
         /// <param name="conversationId">The conversation ID.</param>
         /// <param name="options">The options of the <see cref="KcpRawChannel"/>.</param>
         public KcpRawChannel(IKcpTransport transport, int conversationId, KcpRawChannelOptions? options)
+            : this(transport, (uint)conversationId, options)
+        { }
+
+        private KcpRawChannel(IKcpTransport transport, uint? conversationId, KcpRawChannelOptions? options)
         {
             _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
             _transport = transport;
-            _id = (uint)conversationId;
+            _id = conversationId;
 
             if (options is null)
             {
@@ -82,7 +95,7 @@ namespace KcpSharp
         /// <summary>
         /// Get the ID of the current conversation.
         /// </summary>
-        public int? ConversationId => (int)_id;
+        public int? ConversationId => (int?)_id;
 
         /// <summary>
         /// Get whether the transport is marked as closed.
@@ -125,7 +138,11 @@ namespace KcpSharp
             CancellationToken cancellationToken = cts.Token;
             KcpRawSendOperation sendOperation = _sendOperation;
             AsyncAutoResetEvent<int> ev = _sendNotification;
-            int mss = _mtu - 4;
+            int mss = _mtu;
+            if (_id.HasValue)
+            {
+                mss -= 4;
+            }
 
             try
             {
@@ -143,14 +160,30 @@ namespace KcpSharp
                         continue;
                     }
 
-                    int packetSize = bytesCount + 4;
+                    int packetSize = bytesCount;
+                    if (_id.HasValue)
+                    {
+                        packetSize += 4;
+                    }
                     {
                         using IMemoryOwner<byte> owner = _allocator.Allocate(packetSize);
                         Memory<byte> memory = owner.Memory;
-                        BinaryPrimitives.WriteUInt32LittleEndian(memory.Span, _id);
-                        if (sendOperation.TryConsume(memory.Slice(4), out int bytesWritten))
+                        bool result;
+                        int bytesWritten;
+                        if (_id.HasValue)
                         {
-                            packetSize = Math.Min(packetSize, bytesWritten + 4);
+                            BinaryPrimitives.WriteUInt32LittleEndian(memory.Span, _id.GetValueOrDefault());
+                            result = sendOperation.TryConsume(memory.Slice(4), out bytesWritten);
+                            bytesWritten += 4;
+                        }
+                        else
+                        {
+                            result = sendOperation.TryConsume(memory, out bytesWritten);
+                        }
+
+                        if (result)
+                        {
+                            packetSize = Math.Min(packetSize, bytesWritten);
                             try
                             {
                                 await _transport.SendPacketAsync(memory.Slice(0, packetSize), cancellationToken).ConfigureAwait(false);
@@ -205,15 +238,20 @@ namespace KcpSharp
         public ValueTask InputPakcetAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
         {
             ReadOnlySpan<byte> span = packet.Span;
-            if (span.Length < 4 || span.Length > _mtu)
+            int overhead = _id.HasValue ? 4 : 0;
+            if (span.Length < overhead || span.Length > _mtu)
             {
                 return default;
             }
-            if (BinaryPrimitives.ReadUInt32LittleEndian(span) != _id)
+            if (_id.HasValue)
             {
-                return default;
+                if (BinaryPrimitives.ReadUInt32LittleEndian(span) != _id.GetValueOrDefault())
+                {
+                    return default;
+                }
+                span = span.Slice(4);
             }
-            _receiveQueue.Enqueue(span.Slice(4));
+            _receiveQueue.Enqueue(span);
             return default;
         }
 

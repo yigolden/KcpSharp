@@ -16,7 +16,7 @@ namespace KcpSharp.Tests
         public override KcpConversation Alice => _alice.Conversation;
         public override KcpConversation Bob => _bob.Conversation;
 
-        public BadKcpConversationPipe(int conversationId, BadOneWayConnectionOptions connectionOptions, KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
+        public BadKcpConversationPipe(uint conversationId, BadOneWayConnectionOptions connectionOptions, KcpConversationOptions? aliceOptions, KcpConversationOptions? bobOptions)
         {
             _aliceToBobChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(connectionOptions.ConcurrentCount)
             {
@@ -28,8 +28,8 @@ namespace KcpSharp.Tests
                 SingleReader = true,
                 FullMode = BoundedChannelFullMode.DropWrite,
             });
-            _alice = new BadOneWayConnection(conversationId, _aliceToBobChannel.Writer, connectionOptions, aliceOptions);
-            _bob = new BadOneWayConnection(conversationId, _bobToAliceChannel.Writer, connectionOptions, bobOptions);
+            _alice = new BadOneWayConnection((int)conversationId, _aliceToBobChannel.Writer, connectionOptions, aliceOptions);
+            _bob = new BadOneWayConnection((int)conversationId, _bobToAliceChannel.Writer, connectionOptions, bobOptions);
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => PipeFromAliceToBob(_cts.Token));
             _ = Task.Run(() => PipeFromBobToAlice(_cts.Token));

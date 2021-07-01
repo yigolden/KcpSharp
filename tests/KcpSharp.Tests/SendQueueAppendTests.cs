@@ -218,7 +218,7 @@ namespace KcpSharp.Tests
 
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = false, Mtu = mtu, SendWindow = windowSize, ReceiveWindow = (windowSize + queueSize), RemoteReceiveWindow = windowSize, SendQueueSize = queueSize, DisableCongestionControl = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { UpdateInterval = 30, StreamMode = false, Mtu = mtu, SendWindow = windowSize, ReceiveWindow = (windowSize + queueSize), RemoteReceiveWindow = windowSize, SendQueueSize = queueSize, DisableCongestionControl = true });
 
                 byte[] packet1 = new byte[6 * mss];
                 byte[] packet2 = new byte[6 * mss];
@@ -251,7 +251,7 @@ namespace KcpSharp.Tests
 
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { UpdateInterval = 30, StreamMode = true, Mtu = mtu, SendWindow = windowSize, ReceiveWindow = (windowSize + queueSize), RemoteReceiveWindow = windowSize, SendQueueSize = queueSize, DisableCongestionControl = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { UpdateInterval = 30, StreamMode = true, Mtu = mtu, SendWindow = windowSize, ReceiveWindow = (windowSize + queueSize), RemoteReceiveWindow = windowSize, SendQueueSize = queueSize, DisableCongestionControl = true });
 
                 byte[] packet1 = new byte[6 * mss];
                 byte[] packet2 = new byte[6 * mss];

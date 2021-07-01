@@ -12,7 +12,7 @@ namespace KcpSharp.Tests
         [Theory]
         public void TestPeekAndReceiveOnDisposedConversation(bool disposeOrClose)
         {
-            using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+            using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
 
             if (disposeOrClose)
             {
@@ -38,7 +38,7 @@ namespace KcpSharp.Tests
         [Theory]
         public void TestPeekAndReceiveEmptyQueue(bool useEmptyBuffer)
         {
-            using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+            using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
 
             Assert.False(pipe.Bob.TryPeek(out KcpConversationReceiveResult result));
             Assert.False(result.TransportClosed, "Transport should not be closed.");
@@ -56,7 +56,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe();
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678);
 
                 Assert.True(await pipe.Alice.SendAsync(default, cancellationToken));
                 await Task.Delay(500, cancellationToken);
@@ -83,7 +83,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 124, UpdateInterval = 10, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { Mtu = 124, UpdateInterval = 10, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
 
                 byte[] packet = new byte[packetSize];
                 Random.Shared.NextBytes(packet);
@@ -115,7 +115,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 124, UpdateInterval = 30, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { Mtu = 124, UpdateInterval = 30, SendWindow = 256, ReceiveWindow = 256, RemoteReceiveWindow = 256, NoDelay = true });
 
                 byte[] packet = new byte[packetSize];
                 Random.Shared.NextBytes(packet);
@@ -139,7 +139,7 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = 200 });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { Mtu = 200 });
 
                 byte[] packet1 = new byte[100];
                 byte[] packet2 = new byte[400];
@@ -182,7 +182,7 @@ namespace KcpSharp.Tests
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
                 const int mtu = 500;
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { Mtu = mtu, StreamMode = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { Mtu = mtu, StreamMode = true });
 
                 byte[] stream = new byte[4000];
                 Random.Shared.NextBytes(stream);

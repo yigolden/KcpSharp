@@ -58,7 +58,7 @@ namespace KcpSharp.Tests
             var connectionOptions = new BadOneWayConnectionOptions { DropProbability = drop, BaseLatency = latency, RandomRelay = delay, ConcurrentCount = 12, Random = new Random(42) };
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(180), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreateBadPipe(connectionOptions, options);
+                using KcpConversationPipe pipe = KcpConversationFactory.CreateBadPipe(0x12345678, connectionOptions, options);
 
                 Task sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                 Task receiveTask = ReceiveMultiplePacketsAsync(pipe.Bob, packets, maxPacketSize, waitToReceive, cancellationToken);
@@ -129,7 +129,7 @@ namespace KcpSharp.Tests
             var connectionOptions = new BadOneWayConnectionOptions { DropProbability = drop, BaseLatency = latency, RandomRelay = delay, ConcurrentCount = 12, Random = new Random(42) };
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(150), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreateBadPipe(connectionOptions, options);
+                using KcpConversationPipe pipe = KcpConversationFactory.CreateBadPipe(0x12345678, connectionOptions, options);
 
                 byte[] bigFile = new byte[fileSize];
                 Random.Shared.NextBytes(bigFile);
