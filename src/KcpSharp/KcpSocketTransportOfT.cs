@@ -97,7 +97,7 @@ namespace KcpSharp
 
 #if NEED_SOCKET_SHIM
         /// <inheritdoc />
-        public async ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public async ValueTask SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (_disposed)
             {
@@ -190,7 +190,7 @@ namespace KcpSharp
         }
 #else
         /// <inheritdoc />
-        public ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public ValueTask SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (_disposed)
             {

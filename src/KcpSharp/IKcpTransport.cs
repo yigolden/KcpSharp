@@ -15,6 +15,6 @@ namespace KcpSharp
         /// <param name="packet">The content of the packet.</param>
         /// <param name="cancellationToken">A token to cancel this operation.</param>
         /// <returns>A <see cref="ValueTask"/> that completes when the packet is sent.</returns>
-        ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken);
+        ValueTask SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken);
     }
 }

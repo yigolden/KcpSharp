@@ -284,7 +284,7 @@ namespace KcpSharp
         }
 
         /// <inheritdoc />
-        public ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken = default)
+        public ValueTask SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (_transportClosed || _disposed)
             {
