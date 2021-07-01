@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,17 +36,18 @@ namespace KcpTunnel
                 // send connection request
                 // and wait for result
                 {
-                    Unsafe.SkipInit(out byte b);
+                    byte b = 0;
                     using var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                     _conversation.TrySend(MemoryMarshal.CreateSpan(ref b, 1));
                     Console.WriteLine("Waiting for server to create tunnel. " + _conversation.ConversationId);
                     KcpConversationReceiveResult result = await _conversation.WaitToReceiveAsync(timeoutToken.Token);
-                    if (result.TransportClosed || result.BytesReceived < 1)
+                    if (result.TransportClosed)
                     {
                         return;
                     }
-                    if (!_conversation.TryReceive(MemoryMarshal.CreateSpan(ref b, 1), out result) || result.TransportClosed || result.BytesReceived != 1)
+                    if (!_conversation.TryReceive(MemoryMarshal.CreateSpan(ref b, 1), out result))
                     {
+                        // We don't need to check for result.TransportClosed because there is no way TryReceive can return true when transport is closed.
                         return;
                     }
                     if (b != 0)

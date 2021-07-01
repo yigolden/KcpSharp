@@ -9,7 +9,7 @@
 
 <div style="width: 100%; height: 100%">
     <div>
-        This demo uses a in-memory bidirectional channel to pump packets produced by KcpSharp from one side of the client to the other. It shows that KcpSharp works asynchronously and can function in a single-thread environment (like WebAssembly).
+        This demo uses a in-memory bidirectional channel to pump packets produced by KcpSharp from one side of the client to the other. It demonstrates that KcpSharp works asynchronously and can function in a single-thread environment (like WebAssembly).
     </div>
     <div style="display: flex; flex-direction: row">
         <div style="flex-grow: 1">
@@ -64,7 +64,7 @@
         int index = 0;
         while (true)
         {
-            KcpConversationReceiveResult result = await conversation.WaitToReceiveAsync(CancellationToken.None);
+            KcpConversationReceiveResult result = await conversation.WaitToReceiveAsync();
             if (result.TransportClosed)
             {
                 break;
@@ -73,7 +73,7 @@
             byte[] buffer = ArrayPool<byte>.Shared.Rent(result.BytesReceived);
             try
             {
-                result = await conversation.ReceiveAsync(buffer, CancellationToken.None);
+                result = await conversation.ReceiveAsync(buffer);
                 if (result.TransportClosed)
                 {
                     break;
@@ -158,7 +158,7 @@
         {
             length = Encoding.UTF8.GetBytes(message, buffer);
 
-            await conversation.SendAsync(buffer.AsMemory(0, length), CancellationToken.None);
+            await conversation.SendAsync(buffer.AsMemory(0, length));
         }
         finally
         {

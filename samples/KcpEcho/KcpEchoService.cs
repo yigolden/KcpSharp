@@ -52,10 +52,10 @@ namespace KcpEcho
                     byte[] buffer = ArrayPool<byte>.Shared.Rent(result.BytesReceived);
                     try
                     {
-                        result = await _conversation.ReceiveAsync(buffer, cancellationToken);
-                        if (result.TransportClosed)
+                        if (!_conversation.TryReceive(buffer, out result))
                         {
-                            break;
+                            // We don't need to check for result.TransportClosed because there is no way TryReceive can return true when transport is closed.
+                            return;
                         }
 
                         Console.WriteLine($"Message received from {_endPoint}. Length = {result.BytesReceived} bytes.");

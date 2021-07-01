@@ -39,12 +39,13 @@ namespace KcpTunnel
                     using var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                     KcpConversationReceiveResult result = await _conversation.WaitToReceiveAsync(timeoutToken.Token);
                     Unsafe.SkipInit(out byte b);
-                    if (result.TransportClosed || result.BytesReceived < 1)
+                    if (result.TransportClosed)
                     {
                         return;
                     }
-                    if (!_conversation.TryReceive(MemoryMarshal.CreateSpan(ref b, 1), out result) || result.TransportClosed || result.BytesReceived != 1)
+                    if (!_conversation.TryReceive(MemoryMarshal.CreateSpan(ref b, 1), out result))
                     {
+                        // We don't need to check for result.TransportClosed because there is no way TryReceive can return true when transport is closed.
                         return;
                     }
                     _socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
