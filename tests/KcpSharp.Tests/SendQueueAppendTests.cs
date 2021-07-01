@@ -16,7 +16,7 @@ namespace KcpSharp.Tests
         public void TestTransportClosed(bool disposeOrCloseTransport, bool streamMode)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { StreamMode = streamMode });
@@ -48,7 +48,7 @@ namespace KcpSharp.Tests
         public async Task TestZeroByteSend(bool streamMode)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             const int mtu = 200;
@@ -84,7 +84,7 @@ namespace KcpSharp.Tests
         public async Task TestFullQueueSend(bool streamMode, bool emptyBuffer)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             const int mtu = 200;
@@ -128,7 +128,7 @@ namespace KcpSharp.Tests
         public async Task TestEmptyQueueSend(bool streamMode)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             const int mtu = 200;
@@ -154,7 +154,7 @@ namespace KcpSharp.Tests
         public async Task TestHalfQueueSend(bool streamMode)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             const int mtu = 200;
@@ -180,7 +180,7 @@ namespace KcpSharp.Tests
         public async Task TestPartialSend(bool streamMode)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             const int mtu = 200;

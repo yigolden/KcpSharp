@@ -280,7 +280,7 @@ namespace KcpSharp.Tests
                 _delay = delay;
             }
 
-            public async ValueTask SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+            public async ValueTask SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
             {
                 await Task.Delay(_delay, cancellationToken);
 

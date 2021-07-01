@@ -73,7 +73,7 @@ namespace KcpSharp.Tests
             _conversation.Dispose();
         }
 
-        async ValueTask IKcpTransport.SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        async ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
         {
             await _output.WriteAsync(packet.ToArray(), cancellationToken).ConfigureAwait(false);
         }

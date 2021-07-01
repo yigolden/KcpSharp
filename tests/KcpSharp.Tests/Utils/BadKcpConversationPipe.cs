@@ -95,7 +95,7 @@ namespace KcpSharp.Tests
             _output.Complete();
         }
 
-        ValueTask IKcpTransport.SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
         {
             double drop = _connectionOptions.Random.NextDouble();
             if (drop < _connectionOptions.DropProbability)

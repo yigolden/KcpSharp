@@ -14,7 +14,7 @@ namespace KcpSharp.Tests
         public Task WaitToReceiveBeforeTransportClosed()
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
@@ -35,7 +35,7 @@ namespace KcpSharp.Tests
         public Task WaitToReceiveAfterTransportClosed()
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
@@ -53,7 +53,7 @@ namespace KcpSharp.Tests
         public Task ReceiveBeforeTransportClosed()
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
@@ -74,7 +74,7 @@ namespace KcpSharp.Tests
         public Task ReceiveAfterTransportClosed()
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
@@ -95,7 +95,7 @@ namespace KcpSharp.Tests
         public Task SendAfterTransportClosed(bool useEmptyBuffer)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
@@ -116,7 +116,7 @@ namespace KcpSharp.Tests
         public Task SendBeforeTransportClosed(int packetCount, int queueSize, int sendWindowSize)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {

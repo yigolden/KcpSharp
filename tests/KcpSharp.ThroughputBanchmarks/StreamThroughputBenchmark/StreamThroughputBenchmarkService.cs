@@ -25,7 +25,7 @@ namespace KcpSharp.ThroughputBanchmarks.StreamThroughputBenchmark
             Console.WriteLine($"{DateTime.Now:O}: Connected from {endPoint}");
         }
 
-        ValueTask IKcpTransport.SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
+        ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
             => _sender.SendPacketAsync(_endPoint, packet, cancellationToken);
 
         ValueTask IUdpService.InputPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)

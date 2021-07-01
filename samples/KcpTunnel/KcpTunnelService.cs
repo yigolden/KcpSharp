@@ -24,7 +24,7 @@ namespace KcpTunnel
             _options = options;
             _connection = new KcpMultiplexConnection<IDisposable>(this, state => state?.Dispose());
         }
-        ValueTask IKcpTransport.SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken) => _sender.SendPacketAsync(_endPoint, packet, cancellationToken);
+        ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken) => _sender.SendPacketAsync(_endPoint, packet, cancellationToken);
         void IUdpService.SetTransportClosed() => _connection.SetTransportClosed();
         ValueTask IUdpService.InputPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
         {

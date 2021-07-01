@@ -15,7 +15,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingSend(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
@@ -49,7 +49,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingFlush(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
@@ -86,7 +86,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingReceive(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
@@ -120,7 +120,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingWaitToReceive(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
@@ -156,7 +156,7 @@ namespace KcpSharp.Tests
             var tcs = new TaskCompletionSource();
 
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(new ValueTask(tcs.Task));
 
             using var cts = new CancellationTokenSource();
@@ -197,7 +197,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingReceiveForRawChannel(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
@@ -231,7 +231,7 @@ namespace KcpSharp.Tests
         public async Task TestCancelPendingWaitToReceiveForRawChannel(bool useFullParameters)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
-            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
             using var cts = new CancellationTokenSource();
