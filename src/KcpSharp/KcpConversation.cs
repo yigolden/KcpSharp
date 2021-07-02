@@ -26,6 +26,8 @@ namespace KcpSharp
 
         private readonly int _mtu;
         private readonly int _mss;
+        private readonly int _preBufferSize;
+        private readonly int _postBufferSize;
 
         private uint _snd_una;
         private uint _snd_nxt;
@@ -124,6 +126,25 @@ namespace KcpSharp
             else
             {
                 _mtu = options.Mtu;
+            }
+
+            _preBufferSize = options?.PreBufferSize ?? 0;
+            _postBufferSize = options?.PostBufferSize ?? 0;
+            if (_preBufferSize < 0)
+            {
+                throw new ArgumentException("PreBufferSize must be a non-negative integer.", nameof(options));
+            }
+            if (_postBufferSize < 0)
+            {
+                throw new ArgumentException("PostBufferSize must be a non-negative integer.", nameof(options));
+            }
+            if ((uint)(_preBufferSize + _postBufferSize) >= (uint)(_mtu - 20))
+            {
+                throw new ArgumentException("The sum of PreBufferSize and PostBufferSize is too large. There is not enough space in the packet for the KCP header.", nameof(options));
+            }
+            if (conversationId.HasValue && (uint)(_preBufferSize + _postBufferSize) >= (uint)(_mtu - 24))
+            {
+                throw new ArgumentException("The sum of PreBufferSize and PostBufferSize is too large. There is not enough space in the packet for the KCP header.", nameof(options));
             }
 
             _mss = conversationId.HasValue ? _mtu - 24 : _mtu - 20;
@@ -315,24 +336,30 @@ namespace KcpSharp
 
         private async Task FlushCoreAsync(CancellationToken cancellationToken)
         {
+            int preBufferSize = _preBufferSize;
+            int postBufferSize = _postBufferSize;
             int packetHeaderSize = _id.HasValue ? 24 : 20;
+            int sizeLimitBeforePostBuffer = _mtu - _postBufferSize;
 
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
 
             using IMemoryOwner<byte> bufferOwner = _allocator.Allocate(_mtu);
             Memory<byte> buffer = bufferOwner.Memory;
-            int size = 0;
+            int size = preBufferSize;
+            buffer.Span.Slice(0, size).Clear();
 
             // flush acknowledges
             {
                 int index = 0;
                 while (_ackList.TryGetAt(index++, out uint serialNumber, out uint timestamp))
                 {
-                    if ((size + packetHeaderSize) > _mtu)
+                    if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
                     {
-                        await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
-                        size = 0;
+                        buffer.Span.Slice(size, postBufferSize).Clear();
+                        await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                        size = preBufferSize;
+                        buffer.Span.Slice(0, size).Clear();
                     }
                     var header = new KcpPacketHeader(KcpCommand.Ack, 0, windowSize, timestamp, serialNumber, unacknowledged);
                     header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
@@ -379,10 +406,12 @@ namespace KcpSharp
             // flush window probing commands
             if ((_probe & KcpProbeType.AskSend) != 0)
             {
-                if ((size + packetHeaderSize) > _mtu)
+                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
                 {
-                    await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
-                    size = 0;
+                    buffer.Span.Slice(size, postBufferSize).Clear();
+                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    size = preBufferSize;
+                    buffer.Span.Slice(0, size).Clear();
                 }
                 var header = new KcpPacketHeader(KcpCommand.WindowProbe, 0, windowSize, 0, 0, unacknowledged);
                 header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
@@ -392,10 +421,12 @@ namespace KcpSharp
             // flush window probing commands
             if ((_probe & KcpProbeType.AskTell) != 0)
             {
-                if ((size + packetHeaderSize) > _mtu)
+                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
                 {
-                    await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
-                    size = 0;
+                    buffer.Span.Slice(size, postBufferSize).Clear();
+                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    size = preBufferSize;
+                    buffer.Span.Slice(0, size).Clear();
                 }
                 var header = new KcpPacketHeader(KcpCommand.WindowSize, 0, windowSize, 0, 0, unacknowledged);
                 header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
@@ -496,10 +527,12 @@ namespace KcpSharp
                     KcpPacketHeader header = DeplicateHeader(ref segmentNode.ValueRef.Segment, current, windowSize, unacknowledged);
 
                     int need = packetHeaderSize + data.Length;
-                    if ((size + need) > _mtu)
+                    if ((size + need) > sizeLimitBeforePostBuffer)
                     {
-                        await _transport.SendPacketAsync(buffer.Slice(0, size), CancellationToken.None).ConfigureAwait(false);
-                        size = 0;
+                        buffer.Span.Slice(size, postBufferSize).Clear();
+                        await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                        size = preBufferSize;
+                        buffer.Span.Slice(0, size).Clear();
                     }
 
                     header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
@@ -523,9 +556,10 @@ namespace KcpSharp
             }
 
             // flush remaining segments
-            if (size > 0)
+            if (size > preBufferSize)
             {
-                await _transport.SendPacketAsync(buffer.Slice(0, size), cancellationToken).ConfigureAwait(false);
+                buffer.Span.Slice(size, postBufferSize).Clear();
+                await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
             }
 
             {

@@ -15,6 +15,8 @@ namespace KcpSharp
         private readonly IKcpTransport _transport;
         private readonly uint? _id;
         private readonly int _mtu;
+        private readonly int _preBufferSize;
+        private readonly int _postBufferSize;
 
         private CancellationTokenSource? _sendLoopCts;
         private readonly KcpRawReceiveQueue _receiveQueue;
@@ -60,6 +62,25 @@ namespace KcpSharp
             else
             {
                 _mtu = options.Mtu;
+            }
+
+            _preBufferSize = options?.PreBufferSize ?? 0;
+            _postBufferSize = options?.PostBufferSize ?? 0;
+            if (_preBufferSize < 0)
+            {
+                throw new ArgumentException("PreBufferSize must be a non-negative integer.", nameof(options));
+            }
+            if (_postBufferSize < 0)
+            {
+                throw new ArgumentException("PostBufferSize must be a non-negative integer.", nameof(options));
+            }
+            if ((uint)(_preBufferSize + _postBufferSize) >= (uint)_mtu)
+            {
+                throw new ArgumentException("The sum of PreBufferSize and PostBufferSize must be less than MTU.", nameof(options));
+            }
+            if (conversationId.HasValue && (uint)(_preBufferSize + _postBufferSize) >= (uint)(_mtu - 4))
+            {
+                throw new ArgumentException("The sum of PreBufferSize and PostBufferSize is too large. There is not enough space in the packet for the conversation ID.", nameof(options));
             }
 
             int queueSize = options?.ReceiveQueueSize ?? 32;
@@ -138,7 +159,7 @@ namespace KcpSharp
             CancellationToken cancellationToken = cts.Token;
             KcpRawSendOperation sendOperation = _sendOperation;
             AsyncAutoResetEvent<int> ev = _sendNotification;
-            int mss = _mtu;
+            int mss = _mtu - _preBufferSize - _postBufferSize;
             if (_id.HasValue)
             {
                 mss -= 4;
@@ -148,52 +169,59 @@ namespace KcpSharp
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    int bytesCount = await ev.WaitAsync().ConfigureAwait(false);
+                    int payloadSize = await ev.WaitAsync().ConfigureAwait(false);
                     if (cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    if (bytesCount < 0 || bytesCount > mss)
+                    if (payloadSize < 0 || payloadSize > mss)
                     {
                         _ = sendOperation.TryConsume(default, out _);
                         continue;
                     }
 
-                    int packetSize = bytesCount;
+                    int overhead = _preBufferSize + _postBufferSize;
                     if (_id.HasValue)
                     {
-                        packetSize += 4;
+                        overhead += 4;
                     }
                     {
-                        using IMemoryOwner<byte> owner = _allocator.Allocate(packetSize);
+                        using IMemoryOwner<byte> owner = _allocator.Allocate(payloadSize + overhead);
                         Memory<byte> memory = owner.Memory;
-                        bool result;
-                        int bytesWritten;
+
+                        // Fill the buffer
+                        if (_preBufferSize != 0)
+                        {
+                            memory.Span.Slice(0, _preBufferSize).Clear();
+                            memory = memory.Slice(_preBufferSize);
+                        }
                         if (_id.HasValue)
                         {
                             BinaryPrimitives.WriteUInt32LittleEndian(memory.Span, _id.GetValueOrDefault());
-                            result = sendOperation.TryConsume(memory.Slice(4), out bytesWritten);
-                            bytesWritten += 4;
+                            memory = memory.Slice(4);
                         }
-                        else
+                        if (!sendOperation.TryConsume(memory, out int bytesWritten))
                         {
-                            result = sendOperation.TryConsume(memory, out bytesWritten);
+                            continue;
+                        }
+                        payloadSize = Math.Min(payloadSize, bytesWritten);
+                        memory = memory.Slice(payloadSize);
+                        if (_postBufferSize != 0)
+                        {
+                            memory.Span.Slice(0, _postBufferSize).Clear();
                         }
 
-                        if (result)
+                        // Send the buffer
+                        try
                         {
-                            packetSize = Math.Min(packetSize, bytesWritten);
-                            try
+                            await _transport.SendPacketAsync(owner.Memory.Slice(0, payloadSize + overhead), cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!HandleFlushException(ex))
                             {
-                                await _transport.SendPacketAsync(memory.Slice(0, packetSize), cancellationToken).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                if (!HandleFlushException(ex))
-                                {
-                                    break;
-                                }
+                                break;
                             }
                         }
                     }

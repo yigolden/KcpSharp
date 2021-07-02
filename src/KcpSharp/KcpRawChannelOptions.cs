@@ -19,5 +19,15 @@
         /// The number of packets in the receive queue.
         /// </summary>
         public int ReceiveQueueSize { get; set; } = 32;
+
+        /// <summary>
+        /// The number of bytes to reserve at the start of buffer passed into the underlying transport. The transport should fill this reserved space.
+        /// </summary>
+        public int PreBufferSize { get; set; }
+
+        /// <summary>
+        /// The number of bytes to reserve at the end of buffer passed into the underlying transport. The transport should fill this reserved space.
+        /// </summary>
+        public int PostBufferSize { get; set; }
     }
 }

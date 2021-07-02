@@ -60,6 +60,16 @@
         /// </summary>
         public int SendQueueSize { get; set; }
 
+        /// <summary>
+        /// The number of bytes to reserve at the start of buffer passed into the underlying transport. The transport should fill this reserved space.
+        /// </summary>
+        public int PreBufferSize { get; set; }
+
+        /// <summary>
+        /// The number of bytes to reserve at the end of buffer passed into the underlying transport. The transport should fill this reserved space.
+        /// </summary>
+        public int PostBufferSize { get; set; }
+
         internal const int MtuDefaultValue = 1400;
         internal const uint SendWindowDefaultValue = 32;
         internal const uint ReceiveWindowDefaultValue = 128;
