@@ -220,7 +220,7 @@ namespace KcpSharp
         /// <summary>
         /// Get whether the conversation is in stream mode.
         /// </summary>
-        internal bool StreamMode => _stream;
+        public bool StreamMode => _stream;
 
         /// <summary>
         /// Get the available byte count and available fragment count in the send queue.
