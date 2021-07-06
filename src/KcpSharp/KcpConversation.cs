@@ -240,10 +240,10 @@ namespace KcpSharp
         /// Try to put message into the send queue.
         /// </summary>
         /// <param name="buffer">The content of the message.</param>
-        /// <param name="allowPartialSend">Whether partial sending is allowed in stream mode. This must not be true in none-stream mode.</param>
+        /// <param name="allowPartialSend">Whether partial sending is allowed in stream mode. This must not be true in non-stream mode.</param>
         /// <param name="bytesWritten">The number of bytes put into the send queue. This is always the same as the size of the <paramref name="buffer"/> unless <paramref name="allowPartialSend"/> is set to true.</param>
         /// <returns>True if the message is put into the send queue. False if the message is too large to fit in the send queue, or the transport is closed.</returns>
-        /// <exception cref="ArgumentException"><paramref name="allowPartialSend"/> is set to true in none-stream mode. Or the size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
+        /// <exception cref="ArgumentException"><paramref name="allowPartialSend"/> is set to true in non-stream mode. Or the size of the message is larger than 256 * mtu, thus it can not be correctly fragmented and sent. This exception is never thrown in stream mode.</exception>
         /// <exception cref="InvalidOperationException">The send or flush operation is initiated concurrently.</exception>
         public bool TrySend(ReadOnlySpan<byte> buffer, bool allowPartialSend, out int bytesWritten)
             => _sendQueue.TrySend(buffer, allowPartialSend, out bytesWritten);

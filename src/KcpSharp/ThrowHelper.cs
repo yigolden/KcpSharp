@@ -19,7 +19,7 @@ namespace KcpSharp
         }
         public static Exception ThrowAllowPartialSendArgumentException()
         {
-            throw new ArgumentException("allowPartialSend should not be set to true in none-stream mode.", "allowPartialSend");
+            throw new ArgumentException("allowPartialSend should not be set to true in non-stream mode.", "allowPartialSend");
         }
         public static Exception NewConcurrentSendException()
         {
