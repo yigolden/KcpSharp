@@ -14,7 +14,7 @@ using LinkedListNodeOfQueueItem = System.Collections.Generic.LinkedListNode<(Kcp
 
 namespace KcpSharp
 {
-    internal sealed class KcpSendQueue : IValueTaskSource<bool>, IDisposable
+    internal sealed class KcpSendQueue : IValueTaskSource<bool>, IValueTaskSource, IDisposable
     {
         private readonly IKcpBufferAllocator _allocator;
         private readonly KcpConversationUpdateNotification _updateNotification;
@@ -31,6 +31,7 @@ namespace KcpSharp
         private bool _disposed;
 
         private bool _operationOngoing;
+        private bool _forStream;
         private bool _bufferProvided; // true-send, false-flush
         private ReadOnlyMemory<byte> _buffer;
         private CancellationToken _cancellationToken;
@@ -55,6 +56,11 @@ namespace KcpSharp
         bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
         ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+            => _mrvtsc.OnCompleted(continuation, state, token, flags);
+
+        void IValueTaskSource.GetResult(short token) => _mrvtsc.GetResult(token);
+        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
+        void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
         public bool TryGetAvailableSpace(out int byteCount, out int fragmentCount)
@@ -255,6 +261,7 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
+                _forStream = false;
                 _bufferProvided = true;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
@@ -264,6 +271,83 @@ namespace KcpSharp
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
 
             return new ValueTask<bool>(this, token);
+        }
+
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+        {
+            short token;
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedForStreamException()));
+                }
+                if (_operationOngoing)
+                {
+                    return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new ValueTask(Task.FromCanceled(cancellationToken));
+                }
+
+                int mss = _mss;
+                if (_stream)
+                {
+                    LinkedListNodeOfQueueItem? node = _queue.Last;
+                    if (node is not null)
+                    {
+                        ref KcpBuffer data = ref node.ValueRef.Data;
+                        int expand = mss - data.Length;
+                        expand = Math.Min(expand, buffer.Length);
+                        if (expand > 0)
+                        {
+                            data = data.AppendData(buffer.Span.Slice(0, expand));
+                            buffer = buffer.Slice(expand);
+                            Interlocked.Add(ref _unflushedBytes, expand);
+                        }
+                    }
+
+                    if (buffer.IsEmpty)
+                    {
+                        return default;
+                    }
+                }
+
+                int count = (buffer.Length <= mss) ? 1 : (buffer.Length + mss - 1) / mss;
+                Debug.Assert(count >= 1);
+
+                Debug.Assert(_stream);
+                // synchronously put fragments into queue.
+                while (count > 0 && _queue.Count < _capacity)
+                {
+                    int size = buffer.Length > mss ? mss : buffer.Length;
+                    var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
+                    buffer = buffer.Slice(size);
+
+                    _queue.AddLast(_cache.Rent(kcpBuffer, 0));
+                    Interlocked.Add(ref _unflushedBytes, size);
+                }
+
+                _updateNotification.TrySet(false);
+
+                if (count == 0)
+                {
+                    return default;
+                }
+
+                _mrvtsc.Reset();
+                _operationOngoing = true;
+                _forStream = true;
+                _bufferProvided = true;
+                _buffer = buffer;
+                _cancellationToken = cancellationToken;
+                token = _mrvtsc.Version;
+            }
+
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
+
+            return new ValueTask(this, token);
         }
 
         public ValueTask<bool> FlushAsync(CancellationToken cancellationToken)
@@ -286,6 +370,7 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
+                _forStream = false;
                 _bufferProvided = false;
                 _buffer = default;
                 _cancellationToken = cancellationToken;
@@ -295,6 +380,38 @@ namespace KcpSharp
             _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
 
             return new ValueTask<bool>(this, token);
+        }
+
+        public ValueTask FlushForStreamAsync(CancellationToken cancellationToken)
+        {
+            short token;
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedForStreamException()));
+                }
+                if (_operationOngoing)
+                {
+                    return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new ValueTask(Task.FromCanceled(cancellationToken));
+                }
+
+                _mrvtsc.Reset();
+                _operationOngoing = true;
+                _forStream = true;
+                _bufferProvided = false;
+                _buffer = default;
+                _cancellationToken = cancellationToken;
+                token = _mrvtsc.Version;
+            }
+
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
+
+            return new ValueTask(this, token);
         }
 
         public bool CancelPendingOperation(Exception? innerException, CancellationToken cancellationToken)
@@ -327,6 +444,7 @@ namespace KcpSharp
         private void ClearPreviousOperation()
         {
             _operationOngoing = false;
+            _forStream = false;
             _bufferProvided = false;
             _buffer = default;
             _cancellationToken = default;
@@ -410,8 +528,16 @@ namespace KcpSharp
                 }
                 if (_operationOngoing)
                 {
-                    ClearPreviousOperation();
-                    _mrvtsc.SetResult(false);
+                    if (_forStream)
+                    {
+                        ClearPreviousOperation();
+                        _mrvtsc.SetException(ThrowHelper.NewTransportClosedForStreamException());
+                    }
+                    else
+                    {
+                        ClearPreviousOperation();
+                        _mrvtsc.SetResult(false);
+                    }
                 }
                 _transportClosed = true;
             }
@@ -427,8 +553,16 @@ namespace KcpSharp
                 }
                 if (_operationOngoing)
                 {
-                    ClearPreviousOperation();
-                    _mrvtsc.SetResult(false);
+                    if (_forStream)
+                    {
+                        ClearPreviousOperation();
+                        _mrvtsc.SetException(ThrowHelper.NewTransportClosedForStreamException());
+                    }
+                    else
+                    {
+                        ClearPreviousOperation();
+                        _mrvtsc.SetResult(false);
+                    }
                 }
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 while (node is not null)
@@ -441,5 +575,6 @@ namespace KcpSharp
                 _transportClosed = true;
             }
         }
+
     }
 }

@@ -1,10 +1,15 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
 
 namespace KcpSharp
 {
     internal static class ThrowHelper
     {
+        public static void ThrowTransportClosedForStreanException()
+        {
+            throw new IOException("The underlying transport is closed.");
+        }
         public static Exception NewMessageTooLargeForBufferArgument()
         {
             return new ArgumentException("Message is too large.", "buffer");
@@ -29,6 +34,10 @@ namespace KcpSharp
         {
             return new InvalidOperationException("Concurrent receive operations are not allowed.");
         }
+        public static Exception NewTransportClosedForStreamException()
+        {
+            throw new IOException("The underlying transport is closed.");
+        }
         public static Exception NewOperationCanceledExceptionForCancelPendingSend(Exception? innerException, CancellationToken cancellationToken)
         {
             return new OperationCanceledException("This operation is cancelled by a call to CancelPendingSend.", innerException, cancellationToken);
@@ -40,6 +49,14 @@ namespace KcpSharp
         public static void ThrowConcurrentReceiveException()
         {
             throw new InvalidOperationException("Concurrent receive operations are not allowed.");
+        }
+        public static Exception NewObjectDisposedForKcpStreamException()
+        {
+            return new ObjectDisposedException(nameof(KcpStream));
+        }
+        public static void ThrowObjectDisposedForKcpStreamException()
+        {
+            throw new ObjectDisposedException(nameof(KcpStream));
         }
     }
 }

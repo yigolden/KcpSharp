@@ -218,6 +218,11 @@ namespace KcpSharp
         public bool TransportClosed => _transportClosed;
 
         /// <summary>
+        /// Get whether the conversation is in stream mode.
+        /// </summary>
+        internal bool StreamMode => _stream;
+
+        /// <summary>
         /// Get the available byte count and available fragment count in the send queue.
         /// </summary>
         /// <param name="byteCount">The available byte count in the send queue.</param>
@@ -260,6 +265,9 @@ namespace KcpSharp
         public ValueTask<bool> SendAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             => _sendQueue.SendAsync(buffer, cancellationToken);
 
+        internal ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken)
+            => _sendQueue.WriteAsync(buffer, cancellationToken);
+
         /// <summary>
         /// Cancel the current send operation or flush operation.
         /// </summary>
@@ -291,6 +299,9 @@ namespace KcpSharp
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the all messages are sent and acknowledged. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> FlushAsync(CancellationToken cancellationToken = default)
             => _sendQueue.FlushAsync(cancellationToken);
+
+        internal ValueTask FlushForStreamAsync(CancellationToken cancellationToken)
+            => _sendQueue.FlushForStreamAsync(cancellationToken);
 
         private int Check(uint current)
         {
@@ -1258,6 +1269,9 @@ namespace KcpSharp
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when a full message is moved into <paramref name="buffer"/> or the transport is closed. Its result contains the transport state and the count of bytes written into <paramref name="buffer"/>.</returns>
         public ValueTask<KcpConversationReceiveResult> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
             => _receiveQueue.ReceiveAsync(buffer, cancellationToken);
+
+        internal ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken)
+            => _receiveQueue.ReadAsync(buffer, cancellationToken);
 
         /// <summary>
         /// Cancel the current receive operation.
