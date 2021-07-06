@@ -1,8 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
   <Sdk Name="Microsoft.DotNet.PackageValidation" Version="$(MicrosoftDotNetPackageValidationPackageVersion)" />
-  -->
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net5.0;net6.0</TargetFrameworks>
@@ -18,7 +16,9 @@
     <!-- CA2002: Do not lock on objects with weak identity -->
     <!-- CA2213: Disposable fields should be disposed -->
 
+    <!--
     <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>
+    -->
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
