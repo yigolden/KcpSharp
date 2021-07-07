@@ -31,6 +31,33 @@ namespace KcpSharp.Tests
             Assert.False(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal(0, byteCount);
             Assert.Equal(0, fragmentCount);
+            Assert.Equal(0, conversation.UnflushedBytes);
+        }
+
+        [InlineData(false, false)]
+        [InlineData(false, true)]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        [Theory]
+        public async Task TestTransportClosedAfterSending(bool disposeOrCloseTransport, bool streamMode)
+        {
+            var blackholeConnection = new Mock<IKcpTransport>();
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
+                .Returns(ValueTask.CompletedTask);
+
+            var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { StreamMode = streamMode });
+            Assert.True(await conversation.SendAsync(new byte[1600]));
+            Assert.Equal(1600, conversation.UnflushedBytes);
+            if (disposeOrCloseTransport)
+            {
+                conversation.Dispose();
+            }
+            else
+            {
+                conversation.SetTransportClosed();
+            }
+            Assert.Equal(0, conversation.UnflushedBytes);
+
         }
 
         [InlineData(false)]
@@ -49,7 +76,8 @@ namespace KcpSharp.Tests
             var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { UpdateInterval = 30, Mtu = mtu, StreamMode = streamMode, SendWindow = windowSize, SendQueueSize = queueSize, RemoteReceiveWindow = windowSize, DisableCongestionControl = true });
 
             using var cts = new CancellationTokenSource();
-            Task<bool> sendTask = conversation.SendAsync(new byte[mss * (windowSize + queueSize)], cts.Token).AsTask();
+            int bufferSize = mss * (windowSize + queueSize);
+            Task<bool> sendTask = conversation.SendAsync(new byte[bufferSize], cts.Token).AsTask();
             await Task.Delay(1000);
             Assert.True(sendTask.IsCompletedSuccessfully);
             Assert.True(sendTask.GetAwaiter().GetResult());
@@ -57,6 +85,7 @@ namespace KcpSharp.Tests
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal(0, byteCount);
             Assert.Equal(0, fragmentCount);
+            Assert.Equal(bufferSize, conversation.UnflushedBytes);
         }
 
         [InlineData(false)]
@@ -75,13 +104,15 @@ namespace KcpSharp.Tests
             var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { UpdateInterval = 30, Mtu = mtu, StreamMode = streamMode, SendWindow = windowSize, SendQueueSize = queueSize, RemoteReceiveWindow = windowSize, DisableCongestionControl = true });
 
             using var cts = new CancellationTokenSource();
-            Task<bool> sendTask = conversation.SendAsync(new byte[mss * (windowSize + queueSize) + 1], cts.Token).AsTask();
+            int bufferSize = mss * (windowSize + queueSize);
+            Task<bool> sendTask = conversation.SendAsync(new byte[bufferSize + 1], cts.Token).AsTask();
             await Task.Delay(1000);
             Assert.False(sendTask.IsCompleted);
 
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal(0, byteCount);
             Assert.Equal(0, fragmentCount);
+            Assert.Equal(bufferSize, conversation.UnflushedBytes);
 
             Assert.False(sendTask.IsCompleted);
             cts.Cancel();
@@ -104,7 +135,8 @@ namespace KcpSharp.Tests
             var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { UpdateInterval = 30, Mtu = mtu, StreamMode = streamMode, SendWindow = windowSize, SendQueueSize = queueSize, RemoteReceiveWindow = windowSize, DisableCongestionControl = true });
 
             using var cts = new CancellationTokenSource();
-            Task<bool> sendTask = conversation.SendAsync(new byte[windowSize * mss], cts.Token).AsTask();
+            int bufferSize = windowSize * mss;
+            Task<bool> sendTask = conversation.SendAsync(new byte[bufferSize], cts.Token).AsTask();
             await Task.Delay(1000);
             Assert.True(sendTask.IsCompletedSuccessfully);
             Assert.True(sendTask.GetAwaiter().GetResult());
@@ -112,6 +144,7 @@ namespace KcpSharp.Tests
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal(queueSize * mss, byteCount);
             Assert.Equal(queueSize, fragmentCount);
+            Assert.Equal(windowSize * mss, conversation.UnflushedBytes);
         }
 
         [InlineData(false)]
@@ -130,7 +163,8 @@ namespace KcpSharp.Tests
             var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { UpdateInterval = 30, Mtu = mtu, StreamMode = streamMode, SendWindow = windowSize, SendQueueSize = queueSize, RemoteReceiveWindow = windowSize, DisableCongestionControl = true });
 
             using var cts = new CancellationTokenSource();
-            Task<bool> sendTask = conversation.SendAsync(new byte[mss * (windowSize + queueSize / 2)], cts.Token).AsTask();
+            int bufferSize = mss * (windowSize + queueSize / 2);
+            Task<bool> sendTask = conversation.SendAsync(new byte[bufferSize], cts.Token).AsTask();
             await Task.Delay(1000);
             Assert.True(sendTask.IsCompletedSuccessfully);
             Assert.True(sendTask.GetAwaiter().GetResult());
@@ -138,6 +172,7 @@ namespace KcpSharp.Tests
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal(queueSize / 2 * mss, byteCount);
             Assert.Equal(queueSize / 2, fragmentCount);
+            Assert.Equal(bufferSize, conversation.UnflushedBytes);
         }
 
         [Fact]
@@ -164,6 +199,7 @@ namespace KcpSharp.Tests
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal((queueSize / 2 - 1) * mss, byteCount);
             Assert.Equal(queueSize / 2 - 1, fragmentCount);
+            Assert.Equal(sendSize, conversation.UnflushedBytes);
         }
 
         [Fact]
@@ -190,6 +226,7 @@ namespace KcpSharp.Tests
             Assert.True(conversation.TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount));
             Assert.Equal((queueSize / 2 - 1) * mss + mss / 2, byteCount);
             Assert.Equal(queueSize / 2 - 1, fragmentCount);
+            Assert.Equal(sendSize, conversation.UnflushedBytes);
         }
     }
 }

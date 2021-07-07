@@ -516,7 +516,13 @@ namespace KcpSharp
             => Interlocked.Add(ref _unflushedBytes, -size);
 
         public long GetUnflushedBytes()
-            => Interlocked.Read(ref _unflushedBytes);
+        {
+            if (_transportClosed || _disposed)
+            {
+                return 0;
+            }
+            return Interlocked.Read(ref _unflushedBytes);
+        }
 
         public void SetTransportClosed()
         {
@@ -540,6 +546,7 @@ namespace KcpSharp
                     }
                 }
                 _transportClosed = true;
+                Interlocked.Exchange(ref _unflushedBytes, 0);
             }
         }
 
