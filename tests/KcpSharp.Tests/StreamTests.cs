@@ -26,19 +26,47 @@ namespace KcpSharp.Tests
             Assert.Throws<ArgumentException>("conversation", () => new KcpStream(conversation, true));
         }
 
+        [Fact]
         public async Task TestTransportClosed()
         {
             var blackholeConnection = new Mock<IKcpTransport>();
             blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
                 .Returns(ValueTask.CompletedTask);
 
-            using var conversation = new KcpConversation(blackholeConnection.Object, null);
+            using var conversation = new KcpConversation(blackholeConnection.Object, new KcpConversationOptions { StreamMode = true });
             using var stream = new KcpStream(conversation, true);
             conversation.SetTransportClosed();
 
             byte[] buffer = new byte[100];
             await Assert.ThrowsAsync<IOException>(async () => await stream.ReadAsync(buffer));
             await Assert.ThrowsAsync<IOException>(async () => await stream.WriteAsync(buffer));
+        }
+
+        [InlineData(false)]
+        [InlineData(true)]
+        [Theory]
+        public Task TaskStreamDispose(bool dispose)
+        {
+            var blackholeConnection = new Mock<IKcpTransport>();
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
+                .Returns(ValueTask.CompletedTask);
+
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
+            {
+                using var conversation = new KcpConversation(blackholeConnection.Object, new KcpConversationOptions { StreamMode = true });
+                {
+                    using var stream = new KcpStream(conversation, dispose);
+                    await stream.WriteAsync(new byte[100], cancellationToken);
+                }
+                if (dispose)
+                {
+                    Assert.False(conversation.TryGetSendQueueAvailableSpace(out _, out _));
+                }
+                else
+                {
+                    Assert.True(conversation.TryGetSendQueueAvailableSpace(out _, out _));
+                }
+            });
         }
 
         [Fact]

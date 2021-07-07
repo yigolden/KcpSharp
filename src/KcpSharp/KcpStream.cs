@@ -120,7 +120,7 @@ namespace KcpSharp
         /// <inheritdoc />
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
+            if (disposing && _ownsConversation)
             {
                 _conversation?.Dispose();
             }
