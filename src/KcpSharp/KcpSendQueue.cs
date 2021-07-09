@@ -37,6 +37,9 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
+        private int _itemsInSendWindow;
+        private bool _ackListNotEmpty;
+
         public KcpSendQueue(IKcpBufferAllocator allocator, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
         {
             _allocator = allocator;
@@ -459,10 +462,8 @@ namespace KcpSharp
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 if (node is null)
                 {
-                    if (itemsInSendWindow == 0)
-                    {
-                        CompleteFlush();
-                    }
+                    _itemsInSendWindow = itemsInSendWindow;
+                    TryCompleteFlush();
                     data = default;
                     fragment = default;
                     return false;
@@ -477,6 +478,20 @@ namespace KcpSharp
                     MoveOneFragmentIn();
                     return true;
                 }
+            }
+        }
+
+        public void NotifyAckListChanged(bool itemsListNotEmpty)
+        {
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    return;
+                }
+
+                _ackListNotEmpty = itemsListNotEmpty;
+                TryCompleteFlush();
             }
         }
 
@@ -503,12 +518,15 @@ namespace KcpSharp
             }
         }
 
-        private void CompleteFlush()
+        private void TryCompleteFlush()
         {
             if (_operationOngoing && !_bufferProvided)
             {
-                ClearPreviousOperation();
-                _mrvtsc.SetResult(true);
+                if (_queue.Last is null && _itemsInSendWindow == 0 && !_ackListNotEmpty)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetResult(true);
+                }
             }
         }
 

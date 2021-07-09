@@ -6,15 +6,17 @@ namespace KcpSharp
 {
     internal sealed class KcpAcknowledgeList
     {
+        private readonly KcpSendQueue _sendQueue;
         private (uint SerialNumber, uint Timestamp)[] _array;
         private int _count;
         private SpinLock _lock;
 
-        public KcpAcknowledgeList(int windowSize)
+        public KcpAcknowledgeList(KcpSendQueue sendQueue, int windowSize)
         {
             _array = new (uint SerialNumber, uint Timestamp)[windowSize];
             _count = 0;
             _lock = new SpinLock();
+            _sendQueue = sendQueue;
         }
 
         public bool TryGetAt(int index, out uint serialNumber, out uint timestamp)
@@ -59,6 +61,7 @@ namespace KcpSharp
                     _lock.Exit();
                 }
             }
+            _sendQueue.NotifyAckListChanged(false);
         }
 
         public void Add(uint serialNumber, uint timestamp)
@@ -78,6 +81,7 @@ namespace KcpSharp
                     _lock.Exit();
                 }
             }
+            _sendQueue.NotifyAckListChanged(true);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

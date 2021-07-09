@@ -176,11 +176,11 @@ namespace KcpSharp
 
             _dead_link = 20;
 
-            _ackList = new KcpAcknowledgeList((int)_snd_wnd);
             _updateEvent = new KcpConversationUpdateNotification();
             _queueItemCache = new KcpSendReceiveQueueItemCache();
             _sendQueue = new KcpSendQueue(_allocator, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
             _receiveQueue = new KcpReceiveQueue(_stream, _queueItemCache);
+            _ackList = new KcpAcknowledgeList(_sendQueue, (int)_snd_wnd);
 
             _checkLoopCts = new CancellationTokenSource();
             _updateLoopCts = new CancellationTokenSource();
@@ -290,7 +290,7 @@ namespace KcpSharp
         public long UnflushedBytes => _sendQueue.GetUnflushedBytes();
 
         /// <summary>
-        /// Wait until all messages are sent and acknowledged by the remote host.
+        /// Wait until all messages are sent and acknowledged by the remote host, as well as all the acknowledgements are sent.
         /// </summary>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
@@ -376,8 +376,6 @@ namespace KcpSharp
                     header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
                     size += bytesWritten;
                 }
-
-                _ackList.Clear();
             }
 
             uint current = _current = GetTimestamp();
@@ -573,6 +571,8 @@ namespace KcpSharp
                 await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
             }
 
+            _ackList.Clear();
+
             {
                 bool lockTaken = false;
                 try
@@ -615,7 +615,6 @@ namespace KcpSharp
                     }
                 }
             }
-
         }
 
         private LinkedListNodeOfBufferItem CreateSendBufferItem(ref KcpBuffer data, byte fragment, uint current, ushort windowSize, uint serialNumber, uint unacknowledged, uint rto)
