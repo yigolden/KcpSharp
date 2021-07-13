@@ -148,6 +148,7 @@ namespace KcpSharp
             }
 
             _mss = conversationId.HasValue ? _mtu - 24 : _mtu - 20;
+            _mss = _mss - _preBufferSize - _postBufferSize;
 
             _ssthresh = 2;
 
