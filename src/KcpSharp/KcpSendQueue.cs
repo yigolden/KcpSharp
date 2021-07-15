@@ -32,8 +32,10 @@ namespace KcpSharp
 
         private bool _operationOngoing;
         private bool _forStream;
-        private bool _bufferProvided; // true-send, false-flush
+        private byte _operationMode; // 0-send 1-flush 2-wait for space
         private ReadOnlyMemory<byte> _buffer;
+        private int _waitForByteCount;
+        private int _waitForFragmentCount;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
@@ -76,33 +78,86 @@ namespace KcpSharp
                     fragmentCount = 0;
                     return false;
                 }
-                if (_operationOngoing && _bufferProvided)
+                if (_operationOngoing && _operationMode == 0)
                 {
                     byteCount = 0;
                     fragmentCount = 0;
                     return true;
                 }
-                int mss = _mss;
-                int availableFragments = _capacity - _queue.Count;
-                if (availableFragments < 0)
-                {
-                    byteCount = 0;
-                    fragmentCount = 0;
-                    return true;
-                }
-                int availableBytes = availableFragments * mss;
-                if (_stream)
-                {
-                    LinkedListNodeOfQueueItem? last = _queue.Last;
-                    if (last is not null)
-                    {
-                        availableBytes += _mss - last.ValueRef.Data.Length;
-                    }
-                }
-                byteCount = availableBytes;
-                fragmentCount = availableFragments;
+                GetAvailableSpaceCore(out byteCount, out fragmentCount);
                 return true;
             }
+        }
+
+        private void GetAvailableSpaceCore(out int byteCount, out int fragmentCount)
+        {
+            int mss = _mss;
+            int availableFragments = _capacity - _queue.Count;
+            if (availableFragments < 0)
+            {
+                byteCount = 0;
+                fragmentCount = 0;
+                return;
+            }
+            int availableBytes = availableFragments * mss;
+            if (_stream)
+            {
+                LinkedListNodeOfQueueItem? last = _queue.Last;
+                if (last is not null)
+                {
+                    availableBytes += _mss - last.ValueRef.Data.Length;
+                }
+            }
+            byteCount = availableBytes;
+            fragmentCount = availableFragments;
+        }
+
+        public ValueTask<bool> WaitForAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken)
+        {
+            short token;
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    byteCount = 0;
+                    fragmentCount = 0;
+                    return default;
+                }
+                if ((uint)byteCount > (uint)(_mss * _capacity))
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(byteCount))));
+                }
+                if ((uint)fragmentCount > (uint)_capacity)
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(fragmentCount))));
+                }
+                if (_operationOngoing)
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
+                }
+                GetAvailableSpaceCore(out int currentByteCount, out int currentFragmentCount);
+                if (currentByteCount >= byteCount && currentFragmentCount >= fragmentCount)
+                {
+                    return new ValueTask<bool>(true);
+                }
+
+                _mrvtsc.Reset();
+                _operationOngoing = true;
+                _forStream = false;
+                _operationMode = 2;
+                _waitForByteCount = byteCount;
+                _waitForFragmentCount = fragmentCount;
+                _cancellationToken = cancellationToken;
+                token = _mrvtsc.Version;
+            }
+
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpSendQueue?)state)!.SetCanceled(), this);
+
+            return new ValueTask<bool>(this, token);
         }
 
         public bool TrySend(ReadOnlySpan<byte> buffer, bool allowPartialSend, out int bytesWritten)
@@ -265,7 +320,7 @@ namespace KcpSharp
                 _mrvtsc.Reset();
                 _operationOngoing = true;
                 _forStream = false;
-                _bufferProvided = true;
+                _operationMode = 0;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
@@ -342,7 +397,7 @@ namespace KcpSharp
                 _mrvtsc.Reset();
                 _operationOngoing = true;
                 _forStream = true;
-                _bufferProvided = true;
+                _operationMode = 0;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
@@ -374,7 +429,7 @@ namespace KcpSharp
                 _mrvtsc.Reset();
                 _operationOngoing = true;
                 _forStream = false;
-                _bufferProvided = false;
+                _operationMode = 1;
                 _buffer = default;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
@@ -406,7 +461,7 @@ namespace KcpSharp
                 _mrvtsc.Reset();
                 _operationOngoing = true;
                 _forStream = true;
-                _bufferProvided = false;
+                _operationMode = 1;
                 _buffer = default;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
@@ -448,8 +503,10 @@ namespace KcpSharp
         {
             _operationOngoing = false;
             _forStream = false;
-            _bufferProvided = false;
+            _operationMode = 0;
             _buffer = default;
+            _waitForByteCount = default;
+            _waitForFragmentCount = default;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
@@ -476,6 +533,7 @@ namespace KcpSharp
                     _cache.Return(node);
 
                     MoveOneFragmentIn();
+                    CheckForAvailableSpace();
                     return true;
                 }
             }
@@ -497,7 +555,7 @@ namespace KcpSharp
 
         private void MoveOneFragmentIn()
         {
-            if (_operationOngoing && _bufferProvided)
+            if (_operationOngoing && _operationMode == 0)
             {
                 ReadOnlyMemory<byte> buffer = _buffer;
                 int mss = _mss;
@@ -518,9 +576,22 @@ namespace KcpSharp
             }
         }
 
+        private void CheckForAvailableSpace()
+        {
+            if (_operationOngoing && _operationMode == 2)
+            {
+                GetAvailableSpaceCore(out int byteCount, out int fragmentCount);
+                if (byteCount >= _waitForByteCount && fragmentCount >= _waitForFragmentCount)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetResult(true);
+                }
+            }
+        }
+
         private void TryCompleteFlush()
         {
-            if (_operationOngoing && !_bufferProvided)
+            if (_operationOngoing && _operationMode == 1)
             {
                 if (_queue.Last is null && _itemsInSendWindow == 0 && !_ackListNotEmpty)
                 {

@@ -26,6 +26,10 @@ namespace KcpSharp
         {
             throw new ArgumentException("allowPartialSend should not be set to true in non-stream mode.", "allowPartialSend");
         }
+        public static Exception NewArgumentOutOfRangeException(string paramName)
+        {
+            return new ArgumentOutOfRangeException(paramName);
+        }
         public static Exception NewConcurrentSendException()
         {
             return new InvalidOperationException("Concurrent send operations are not allowed.");

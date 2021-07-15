@@ -255,6 +255,18 @@ namespace KcpSharp
             => _sendQueue.TrySend(buffer, allowPartialSend, out bytesWritten);
 
         /// <summary>
+        /// Wait until the send queue contains at least <paramref name="byteCount"/> bytes of free space, and also <paramref name="fragmentCount"/> available segments.
+        /// </summary>
+        /// <param name="byteCount">The number of bytes in the available space.</param>
+        /// <param name="fragmentCount">The count of fragment in the available space.</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="byteCount"/> or <paramref name="fragmentCount"/> is larger than the total space of the send queue.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
+        /// <returns></returns>
+        public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken)
+            => _sendQueue.WaitForAvailableSpaceAsync(byteCount, fragmentCount, cancellationToken);
+
+        /// <summary>
         /// Put message into the send queue.
         /// </summary>
         /// <param name="buffer">The content of the message.</param>
