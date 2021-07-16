@@ -39,9 +39,7 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        private int _itemsInSendWindow;
         private bool _ackListNotEmpty;
-
         public KcpSendQueue(IKcpBufferPool bufferPool, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
         {
             _bufferPool = bufferPool;
@@ -516,15 +514,13 @@ namespace KcpSharp
             _cancellationRegistration = default;
         }
 
-        public bool TryDequeue(int itemsInSendWindow, out KcpBuffer data, out byte fragment)
+        public bool TryDequeue(out KcpBuffer data, out byte fragment)
         {
             lock (_queue)
             {
                 LinkedListNodeOfQueueItem? node = _queue.First;
                 if (node is null)
                 {
-                    _itemsInSendWindow = itemsInSendWindow;
-                    TryCompleteFlush();
                     data = default;
                     fragment = default;
                     return false;
@@ -553,7 +549,7 @@ namespace KcpSharp
                 }
 
                 _ackListNotEmpty = itemsListNotEmpty;
-                TryCompleteFlush();
+                TryCompleteFlush(Interlocked.Read(ref _unflushedBytes));
             }
         }
 
@@ -594,11 +590,11 @@ namespace KcpSharp
             }
         }
 
-        private void TryCompleteFlush()
+        private void TryCompleteFlush(long unflushedBytes)
         {
             if (_operationOngoing && _operationMode == 1)
             {
-                if (_queue.Last is null && _itemsInSendWindow == 0 && !_ackListNotEmpty)
+                if (_queue.Last is null && unflushedBytes == 0 && !_ackListNotEmpty)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(true);
@@ -607,7 +603,16 @@ namespace KcpSharp
         }
 
         public void SubtractUnflushedBytes(int size)
-            => Interlocked.Add(ref _unflushedBytes, -size);
+        {
+            long unflushedBytes = Interlocked.Add(ref _unflushedBytes, -size);
+            if (unflushedBytes == 0)
+            {
+                lock (_queue)
+                {
+                    TryCompleteFlush(0);
+                }
+            }
+        }
 
         public long GetUnflushedBytes()
         {

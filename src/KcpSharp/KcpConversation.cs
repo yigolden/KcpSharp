@@ -468,7 +468,7 @@ namespace KcpSharp
             // move data from snd_queue to snd_buf
             while (TimeDiff(_snd_nxt, _snd_una + cwnd) < 0)
             {
-                if (!_sendQueue.TryDequeue(TimeDiff(_snd_una, _snd_nxt), out KcpBuffer data, out byte fragment))
+                if (!_sendQueue.TryDequeue(out KcpBuffer data, out byte fragment))
                 {
                     break;
                 }
