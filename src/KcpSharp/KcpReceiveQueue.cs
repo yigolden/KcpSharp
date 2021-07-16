@@ -412,7 +412,7 @@ namespace KcpSharp
                 next = node.Next;
 
                 byte fragment = node.ValueRef.Fragment;
-                KcpBuffer data = node.ValueRef.Data;
+                ref KcpBuffer data = ref node.ValueRef.Data;
 
                 int sizeToCopy = Math.Min(data.Length, buffer.Length);
                 data.DataRegion.Span.Slice(0, sizeToCopy).CopyTo(buffer);
@@ -423,7 +423,7 @@ namespace KcpSharp
                 if (sizeToCopy != data.Length)
                 {
                     // partial data is received.
-                    node.ValueRef = (data.Advance(sizeToCopy), node.ValueRef.Fragment);
+                    node.ValueRef = (data.Consume(sizeToCopy), node.ValueRef.Fragment);
                 }
                 else
                 {

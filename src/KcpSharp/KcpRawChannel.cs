@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,7 @@ namespace KcpSharp
     /// </summary>
     public sealed class KcpRawChannel : IKcpConversation, IKcpExceptionProducer<KcpRawChannel>
     {
-        private readonly IKcpBufferAllocator _allocator;
+        private readonly IKcpBufferPool _bufferPool;
         private readonly IKcpTransport _transport;
         private readonly uint? _id;
         private readonly int _mtu;
@@ -47,7 +46,9 @@ namespace KcpSharp
 
         private KcpRawChannel(IKcpTransport transport, uint? conversationId, KcpRawChannelOptions? options)
         {
-            _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
+#pragma warning disable CS0618 // obsolete member
+            _bufferPool = options is null ? DefaultArrayPoolBufferAllocator.Default : (options.BufferPool ?? (options.BufferAllocator is null ? DefaultArrayPoolBufferAllocator.Default : new KcpBufferPoolAdapter(options.BufferAllocator)));
+#pragma warning restore CS0618 
             _transport = transport;
             _id = conversationId;
 
@@ -91,7 +92,7 @@ namespace KcpSharp
 
             _sendLoopCts = new CancellationTokenSource();
             _sendNotification = new AsyncAutoResetEvent<int>();
-            _receiveQueue = new KcpRawReceiveQueue(_allocator, queueSize);
+            _receiveQueue = new KcpRawReceiveQueue(_bufferPool, queueSize);
             _sendOperation = new KcpRawSendOperation(_sendNotification);
 
             _ = Task.Run(() => SendLoopAsync(_sendLoopCts));
@@ -187,7 +188,7 @@ namespace KcpSharp
                         overhead += 4;
                     }
                     {
-                        using IMemoryOwner<byte> owner = _allocator.Allocate(payloadSize + overhead);
+                        using KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(payloadSize + overhead, true));
                         Memory<byte> memory = owner.Memory;
 
                         // Fill the buffer

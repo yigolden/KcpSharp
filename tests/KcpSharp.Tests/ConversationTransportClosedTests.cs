@@ -20,7 +20,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator });
                     Task unregisterTask = Task.Run(async () => { await Task.Delay(500); conversation.SetTransportClosed(); });
                     Assert.True((await conversation.WaitToReceiveAsync(cancellationToken)).TransportClosed);
 
@@ -41,7 +41,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator });
                     conversation.SetTransportClosed();
                     Assert.True((await conversation.WaitToReceiveAsync(cancellationToken)).TransportClosed);
                 }
@@ -60,7 +60,7 @@ namespace KcpSharp.Tests
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
                     byte[] buffer = new byte[4096];
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator });
                     Task unregisterTask = Task.Run(async () => { await Task.Delay(500); conversation.SetTransportClosed(); });
                     Assert.True((await conversation.ReceiveAsync(buffer, cancellationToken)).TransportClosed);
                     await unregisterTask;
@@ -81,7 +81,7 @@ namespace KcpSharp.Tests
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
                     byte[] buffer = new byte[4096];
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator });
                     conversation.SetTransportClosed();
                     Assert.True((await conversation.ReceiveAsync(buffer, cancellationToken)).TransportClosed);
                 }
@@ -102,7 +102,7 @@ namespace KcpSharp.Tests
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
                     byte[] buffer = useEmptyBuffer ? Array.Empty<byte>() : new byte[4096];
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator });
                     conversation.SetTransportClosed();
                     Assert.False(await conversation.SendAsync(buffer, cancellationToken));
                 }
@@ -122,7 +122,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = queueSize, SendWindow = sendWindowSize });
+                    using var conversation = new KcpConversation(blackholeConnection.Object, 42, new KcpConversationOptions { BufferPool = trackedAllocator, SendQueueSize = queueSize, SendWindow = sendWindowSize });
                     Task unregisterTask = Task.Run(async () => { await Task.Delay(500); conversation.SetTransportClosed(); });
                     Assert.False(await SendMultiplePacketsAsync(conversation, packetCount, cancellationToken));
                     await unregisterTask;
@@ -153,7 +153,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
+                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferPool = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
                     byte[] bigFile = new byte[fileSize];
                     Random.Shared.NextBytes(bigFile);
@@ -186,7 +186,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferAllocator = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
+                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferPool = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
 
                     Task<bool> sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                     await Task.Delay(2000, cancellationToken);

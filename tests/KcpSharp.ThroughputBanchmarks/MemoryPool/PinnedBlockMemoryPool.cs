@@ -7,7 +7,7 @@ namespace KcpSharp.ThroughputBanchmarks
     /// <summary>
     /// Used to allocate and distribute re-usable blocks of memory.
     /// </summary>
-    internal sealed class ArrayBlockMemoryPool : MemoryPool<byte>, IKcpBufferAllocator
+    internal sealed class PinnedBlockMemoryPool : MemoryPool<byte>, IKcpBufferPool
     {
         /// <summary>
         /// The size of a block.
@@ -38,7 +38,7 @@ namespace KcpSharp.ThroughputBanchmarks
         /// </summary>
         private const int AnySize = -1;
 
-        public ArrayBlockMemoryPool(int blockSize)
+        public PinnedBlockMemoryPool(int blockSize)
         {
             if (blockSize < 0)
             {
@@ -56,7 +56,7 @@ namespace KcpSharp.ThroughputBanchmarks
 
             if (_isDisposed)
             {
-                throw new ObjectDisposedException(nameof(ArrayBlockMemoryPool));
+                throw new ObjectDisposedException(nameof(PinnedBlockMemoryPool));
             }
 
             if (_blocks.TryDequeue(out MemoryPoolBlock? block))
@@ -105,6 +105,6 @@ namespace KcpSharp.ThroughputBanchmarks
             }
         }
 
-        public IMemoryOwner<byte> Allocate(int size) => Rent(size);
+        KcpRentedBuffer IKcpBufferPool.Rent(KcpBufferPoolRentOptions options) => options.IsOutbound ? KcpRentedBuffer.FromMemoryOwner(Rent(options.Size)) : KcpRentedBuffer.FromSharedArrayPool(options.Size);
     }
 }

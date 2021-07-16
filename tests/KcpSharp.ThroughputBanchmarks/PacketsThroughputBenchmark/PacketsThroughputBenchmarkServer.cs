@@ -27,10 +27,10 @@ namespace KcpSharp.ThroughputBanchmarks.PacketsThroughputBenchmark
                 throw new ArgumentOutOfRangeException(nameof(updateInterval), "updateInterval is not valid.");
             }
 
-            var allocator = new ArrayBlockMemoryPool(mtu);
+            var allocator = new PinnedBlockMemoryPool(mtu);
             var options = new KcpConversationOptions
             {
-                BufferAllocator = allocator,
+                BufferPool = allocator,
                 Mtu = mtu,
                 SendWindow = windowSize,
                 RemoteReceiveWindow = windowSize,

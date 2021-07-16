@@ -8,17 +8,17 @@ namespace KcpSharp.ThroughputBanchmarks
     /// </summary>
     internal sealed class MemoryPoolBlock : IMemoryOwner<byte>
     {
-        internal MemoryPoolBlock(ArrayBlockMemoryPool pool, int length)
+        internal MemoryPoolBlock(PinnedBlockMemoryPool pool, int length)
         {
             Pool = pool;
 
-            Memory = GC.AllocateUninitializedArray<byte>(length, pinned: false);
+            Memory = GC.AllocateUninitializedArray<byte>(length, pinned: true);
         }
 
         /// <summary>
         /// Back-reference to the memory pool which this block was allocated from. It may only be returned to this pool.
         /// </summary>
-        public ArrayBlockMemoryPool Pool { get; }
+        public PinnedBlockMemoryPool Pool { get; }
 
         public Memory<byte> Memory { get; }
 

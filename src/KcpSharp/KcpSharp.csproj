@@ -10,11 +10,13 @@
 
     <Description>C# asynchronous KCP protocol implementation. (ported from https://github.com/skywind3000/kcp)</Description>
 
-    <NoWarn>$(NoWarn);CA1031;CA1508;CA2002;CA2213</NoWarn>
+    <NoWarn>$(NoWarn);CA1031;CA1508;CA1815;CA2002;CA2213;CA2231</NoWarn>
     <!-- CA1031: Do not catch general exception types -->
     <!-- CA1508: Avoid dead conditional code -->
+    <!-- CA1815: Override equals and operator equals on value types -->
     <!-- CA2002: Do not lock on objects with weak identity -->
     <!-- CA2213: Disposable fields should be disposed -->
+    <!-- CA2231: Overload operator equals on overriding ValueType.Equals -->
 
     <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>

@@ -4,14 +4,14 @@ using System.Threading;
 
 namespace KcpSharp.Tests
 {
-    internal sealed class TrackedBufferAllocator : IKcpBufferAllocator
+    internal sealed class TrackedBufferAllocator : IKcpBufferPool
     {
         private int _inuseBufferCount;
 
-        public IMemoryOwner<byte> Allocate(int size)
+        public KcpRentedBuffer Rent(KcpBufferPoolRentOptions options)
         {
             Interlocked.Increment(ref _inuseBufferCount);
-            return new TrackedBufferOwner(this, size);
+            return KcpRentedBuffer.FromMemoryOwner(new TrackedBufferOwner(this, options.Size));
         }
 
         internal void Return()

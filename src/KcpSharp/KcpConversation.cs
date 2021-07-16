@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -20,7 +19,7 @@ namespace KcpSharp
     /// </summary>
     public sealed class KcpConversation : IKcpConversation, IKcpExceptionProducer<KcpConversation>
     {
-        private readonly IKcpBufferAllocator _allocator;
+        private readonly IKcpBufferPool _bufferPool;
         private readonly IKcpTransport _transport;
         private readonly uint? _id;
 
@@ -111,7 +110,9 @@ namespace KcpSharp
 
         private KcpConversation(IKcpTransport transport, uint? conversationId, KcpConversationOptions? options)
         {
-            _allocator = options?.BufferAllocator ?? DefaultArrayPoolBufferAllocator.Default;
+#pragma warning disable CS0618 // obsolete member
+            _bufferPool = options is null ? DefaultArrayPoolBufferAllocator.Default : (options.BufferPool ?? (options.BufferAllocator is null ? DefaultArrayPoolBufferAllocator.Default : new KcpBufferPoolAdapter(options.BufferAllocator)));
+#pragma warning restore CS0618 
             _transport = transport;
             _id = conversationId;
 
@@ -179,7 +180,7 @@ namespace KcpSharp
 
             _updateEvent = new KcpConversationUpdateNotification();
             _queueItemCache = new KcpSendReceiveQueueItemCache();
-            _sendQueue = new KcpSendQueue(_allocator, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
+            _sendQueue = new KcpSendQueue(_bufferPool, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
             _receiveQueue = new KcpReceiveQueue(_stream, _queueItemCache);
             _ackList = new KcpAcknowledgeList(_sendQueue, (int)_snd_wnd);
 
@@ -368,7 +369,7 @@ namespace KcpSharp
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
 
-            using IMemoryOwner<byte> bufferOwner = _allocator.Allocate(_mtu);
+            using KcpRentedBuffer bufferOwner = _bufferPool.Rent(new KcpBufferPoolRentOptions(_mtu, true));
             Memory<byte> buffer = bufferOwner.Memory;
             int size = preBufferSize;
             buffer.Span.Slice(0, size).Clear();
@@ -480,7 +481,7 @@ namespace KcpSharp
                         return;
                     }
 
-                    _sndBuf.AddLast(CreateSendBufferItem(ref data, fragment, current, windowSize, (uint)Interlocked.Increment(ref Unsafe.As<uint, int>(ref _snd_nxt)) - 1, unacknowledged, _rx_rto));
+                    _sndBuf.AddLast(CreateSendBufferItem(in data, fragment, current, windowSize, (uint)Interlocked.Increment(ref Unsafe.As<uint, int>(ref _snd_nxt)) - 1, unacknowledged, _rx_rto));
                 }
             }
 
@@ -630,7 +631,7 @@ namespace KcpSharp
             }
         }
 
-        private LinkedListNodeOfBufferItem CreateSendBufferItem(ref KcpBuffer data, byte fragment, uint current, ushort windowSize, uint serialNumber, uint unacknowledged, uint rto)
+        private LinkedListNodeOfBufferItem CreateSendBufferItem(in KcpBuffer data, byte fragment, uint current, ushort windowSize, uint serialNumber, uint unacknowledged, uint rto)
         {
             var newseg = new KcpSendReceiveBufferItem
             {
@@ -1153,7 +1154,7 @@ namespace KcpSharp
 
                 if (!repeat)
                 {
-                    IMemoryOwner<byte>? buffer = _allocator.Allocate(data.Length);
+                    KcpRentedBuffer buffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(data.Length, false));
                     var item = new KcpSendReceiveBufferItem
                     {
                         Data = KcpBuffer.CreateFromSpan(buffer, data),

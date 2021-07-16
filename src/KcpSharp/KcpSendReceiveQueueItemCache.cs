@@ -15,7 +15,7 @@ namespace KcpSharp
         private LinkedListOfQueueItem _list = new();
         private SpinLock _lock;
 
-        public LinkedListNodeOfQueueItem Rent(KcpBuffer buffer, byte fragment)
+        public LinkedListNodeOfQueueItem Rent(in KcpBuffer buffer, byte fragment)
         {
             bool lockTaken = false;
             try

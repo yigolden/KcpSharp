@@ -1,10 +1,12 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 
 namespace KcpSharp
 {
     /// <summary>
     /// The allocator used to allocate large chunks of memory.
     /// </summary>
+    [Obsolete("IKcpBufferAllocator is deprecated because it has design flaws. Implement your custom allocator using IKcpBufferPool interface instead.")]
     public interface IKcpBufferAllocator
     {
         /// <summary>

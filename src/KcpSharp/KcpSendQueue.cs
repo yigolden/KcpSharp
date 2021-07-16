@@ -16,7 +16,7 @@ namespace KcpSharp
 {
     internal sealed class KcpSendQueue : IValueTaskSource<bool>, IValueTaskSource, IDisposable
     {
-        private readonly IKcpBufferAllocator _allocator;
+        private readonly IKcpBufferPool _bufferPool;
         private readonly KcpConversationUpdateNotification _updateNotification;
         private readonly bool _stream;
         private readonly int _capacity;
@@ -42,9 +42,9 @@ namespace KcpSharp
         private int _itemsInSendWindow;
         private bool _ackListNotEmpty;
 
-        public KcpSendQueue(IKcpBufferAllocator allocator, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
+        public KcpSendQueue(IKcpBufferPool bufferPool, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
         {
-            _allocator = allocator;
+            _bufferPool = bufferPool;
             _updateNotification = updateNotification;
             _stream = stream;
             _capacity = capacity;
@@ -231,7 +231,9 @@ namespace KcpSharp
                     int fragment = --count;
 
                     int size = buffer.Length > mss ? mss : buffer.Length;
-                    var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Slice(0, size));
+
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mss, false));
+                    KcpBuffer kcpBuffer = KcpBuffer.CreateFromSpan(owner, buffer.Slice(0, size));
                     buffer = buffer.Slice(size);
 
                     _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
@@ -303,7 +305,8 @@ namespace KcpSharp
                     int fragment = --count;
 
                     int size = buffer.Length > mss ? mss : buffer.Length;
-                    var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mss, false));
+                    KcpBuffer kcpBuffer = KcpBuffer.CreateFromSpan(owner, buffer.Span.Slice(0, size));
                     buffer = buffer.Slice(size);
 
                     _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
@@ -380,7 +383,8 @@ namespace KcpSharp
                 while (count > 0 && _queue.Count < _capacity)
                 {
                     int size = buffer.Length > mss ? mss : buffer.Length;
-                    var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mss, false));
+                    KcpBuffer kcpBuffer = KcpBuffer.CreateFromSpan(owner, buffer.Span.Slice(0, size));
                     buffer = buffer.Slice(size);
 
                     _queue.AddLast(_cache.Rent(kcpBuffer, 0));
@@ -562,7 +566,8 @@ namespace KcpSharp
                 int count = (buffer.Length <= mss) ? 1 : (buffer.Length + mss - 1) / mss;
 
                 int size = buffer.Length > mss ? mss : buffer.Length;
-                var kcpBuffer = KcpBuffer.CreateFromSpan(_allocator.Allocate(mss), buffer.Span.Slice(0, size));
+                KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mss, false));
+                KcpBuffer kcpBuffer = KcpBuffer.CreateFromSpan(owner, buffer.Span.Slice(0, size));
                 _buffer = buffer.Slice(size);
 
                 _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)(count - 1)));

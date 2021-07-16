@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Buffers;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
@@ -18,7 +17,7 @@ namespace KcpSharp
     {
         private ManualResetValueTaskSourceCore<KcpConversationReceiveResult> _mrvtsc;
 
-        private readonly IKcpBufferAllocator _allocator;
+        private readonly IKcpBufferPool _bufferPool;
         private readonly int _capacity;
         private readonly LinkedListOfQueueItem _queue;
         private readonly LinkedListOfQueueItem _recycled;
@@ -32,9 +31,9 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        public KcpRawReceiveQueue(IKcpBufferAllocator allocator, int capacity)
+        public KcpRawReceiveQueue(IKcpBufferPool bufferPool, int capacity)
         {
-            _allocator = allocator;
+            _bufferPool = bufferPool;
             _capacity = capacity;
             _queue = new LinkedListOfQueueItem();
             _recycled = new LinkedListOfQueueItem();
@@ -126,18 +125,18 @@ namespace KcpSharp
                     return false;
                 }
 
-                KcpBuffer source = first.ValueRef;
+                ref KcpBuffer source = ref first.ValueRef;
                 if (buffer.Length < source.Length)
                 {
                     ThrowHelper.ThrowBufferTooSmall();
                 }
 
                 source.DataRegion.Span.CopyTo(buffer);
-                result = new KcpConversationReceiveResult(first.ValueRef.Length);
+                result = new KcpConversationReceiveResult(source.Length);
 
                 _queue.RemoveFirst();
-                first.ValueRef.Release();
-                first.ValueRef = default;
+                source.Release();
+                source = default;
                 _recycled.AddLast(first);
 
                 return true;
@@ -165,7 +164,7 @@ namespace KcpSharp
                 LinkedListNodeOfQueueItem? first = _queue.First;
                 if (first is not null)
                 {
-                    KcpBuffer source = first.ValueRef;
+                    ref KcpBuffer source = ref first.ValueRef;
                     int length = source.Length;
                     if (buffer.Length < source.Length)
                     {
@@ -175,7 +174,7 @@ namespace KcpSharp
 
                     source.DataRegion.CopyTo(buffer);
                     source.Release();
-                    first.ValueRef = default;
+                    source = default;
                     _recycled.AddLast(first);
 
                     return new ValueTask<KcpConversationReceiveResult>(new KcpConversationReceiveResult(length));
@@ -248,14 +247,14 @@ namespace KcpSharp
                         return;
                     }
 
-                    IMemoryOwner<byte> owner = _allocator.Allocate(buffer.Length);
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(buffer.Length, false));
                     _queue.AddLast(AllocateNode(KcpBuffer.CreateFromSpan(owner, buffer)));
                     return;
                 }
 
                 if (!_bufferProvided)
                 {
-                    IMemoryOwner<byte> owner = _allocator.Allocate(buffer.Length);
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(buffer.Length, false));
                     _queue.AddLast(AllocateNode(KcpBuffer.CreateFromSpan(owner, buffer)));
 
                     ClearPreviousOperation();
@@ -265,7 +264,7 @@ namespace KcpSharp
 
                 if (buffer.Length > _buffer.Length)
                 {
-                    IMemoryOwner<byte> owner = _allocator.Allocate(buffer.Length);
+                    KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(buffer.Length, false));
                     _queue.AddLast(AllocateNode(KcpBuffer.CreateFromSpan(owner, buffer)));
 
                     ClearPreviousOperation();

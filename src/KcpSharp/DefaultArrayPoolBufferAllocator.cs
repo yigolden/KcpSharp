@@ -3,13 +3,20 @@ using System.Buffers;
 
 namespace KcpSharp
 {
-    internal sealed class DefaultArrayPoolBufferAllocator : IKcpBufferAllocator
+#pragma warning disable CS0618 // IKcpBufferAllocator is obsolete.
+    internal sealed class DefaultArrayPoolBufferAllocator : IKcpBufferPool, IKcpBufferAllocator
+#pragma warning restore CS0618
     {
         public static DefaultArrayPoolBufferAllocator Default { get; } = new DefaultArrayPoolBufferAllocator();
 
         public IMemoryOwner<byte> Allocate(int size)
         {
             return new ArrayPoolBufferOwner(size);
+        }
+
+        public KcpRentedBuffer Rent(KcpBufferPoolRentOptions options)
+        {
+            return KcpRentedBuffer.FromSharedArrayPool(options.Size);
         }
     }
 

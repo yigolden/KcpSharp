@@ -1,65 +1,60 @@
 ﻿using System;
-using System.Buffers;
+using System.Diagnostics;
 
 namespace KcpSharp
 {
     internal readonly struct KcpBuffer
     {
-        private readonly IMemoryOwner<byte> _owner;
-        private readonly int _offset;
+        private readonly object? _owner;
+        private readonly Memory<byte> _memory;
         private readonly int _length;
 
-        public Memory<byte> Buffer => _owner.Memory;
-        public ReadOnlyMemory<byte> DataRegion => _owner.Memory.Slice(_offset, _length);
+        public ReadOnlyMemory<byte> DataRegion => _memory.Slice(0, _length);
+
         public int Length => _length;
 
-        private KcpBuffer(IMemoryOwner<byte> owner, int offset, int length)
+        private KcpBuffer(object? owner, Memory<byte> memory, int length)
         {
             _owner = owner;
-            _offset = offset;
+            _memory = memory;
             _length = length;
         }
 
-        public static KcpBuffer CreateFromSpan(IMemoryOwner<byte> owner, ReadOnlySpan<byte> dataSource)
+        public static KcpBuffer CreateFromSpan(KcpRentedBuffer buffer, ReadOnlySpan<byte> dataSource)
         {
-            Memory<byte> memory = owner.Memory;
+            Memory<byte> memory = buffer.Memory;
             if (dataSource.Length > memory.Length)
             {
-                ThrowInvalidOperationException();
+                ThrowRentedBufferTooSmall();
             }
             dataSource.CopyTo(memory.Span);
-            return new KcpBuffer(owner, 0, dataSource.Length);
+            return new KcpBuffer(buffer.Owner, memory, dataSource.Length);
         }
 
         public KcpBuffer AppendData(ReadOnlySpan<byte> data)
         {
-            Memory<byte> buffer = _owner.Memory.Slice(_offset);
-            int expandedLength = _length + data.Length;
-            if (expandedLength > buffer.Length)
+            if ((_length + data.Length) > _memory.Length)
             {
-                ThrowInvalidOperationException();
+                ThrowRentedBufferTooSmall();
             }
-            data.CopyTo(buffer.Span.Slice(_length));
-            return new KcpBuffer(_owner, _offset, expandedLength);
+            data.CopyTo(_memory.Span.Slice(_length));
+            return new KcpBuffer(_owner, _memory, _length + data.Length);
         }
 
-        public KcpBuffer Advance(int length)
+        public KcpBuffer Consume(int length)
         {
-            if ((uint)length > (uint)_length)
-            {
-                ThrowInvalidOperationException();
-            }
-            return new KcpBuffer(_owner, _offset + length, _length - length);
+            Debug.Assert((uint)length <= (uint)_length);
+            return new KcpBuffer(_owner, _memory.Slice(length), _length - length);
         }
 
         public void Release()
         {
-            _owner.Dispose();
+            new KcpRentedBuffer(_owner, _memory).Dispose();
         }
 
-        private static void ThrowInvalidOperationException()
+        private static void ThrowRentedBufferTooSmall()
         {
-            throw new InvalidOperationException();
+            throw new InvalidOperationException("The rented buffer is not large enough to hold the data.");
         }
     }
 }
