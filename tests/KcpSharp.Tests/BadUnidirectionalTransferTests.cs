@@ -11,15 +11,15 @@ namespace KcpSharp.Tests
     {
         public static IEnumerable<object[]> GetMultiplePacketTestData()
         {
-            int[] packetCounts = new int[] { 4, 10, 32 };
+            int[] packetCounts = new int[] { 10, 32 };
             (int min, int max)[] packetSizes = new (int min, int max)[]
             {
                 (100, 200),
                 (1200, 2400)
             };
             double[] drops = new double[] { 0.1 };
-            int[] baseLatencies = new int[] { 0 };
-            int[] randomDelays = new int[] { 20, 40 };
+            int[] baseLatencies = new int[] { 10 };
+            int[] randomDelays = new int[] { 40 };
 
             foreach (int packetCount in packetCounts)
             {
