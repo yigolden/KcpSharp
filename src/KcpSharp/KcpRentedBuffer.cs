@@ -15,7 +15,11 @@ namespace KcpSharp
         private readonly Memory<byte> _memory;
 
         internal object? Owner => _owner;
-        internal Memory<byte> Memory => _memory;
+
+        /// <summary>
+        /// The rented buffer.
+        /// </summary>
+        public Memory<byte> Memory => _memory;
 
         internal KcpRentedBuffer(object? owner, Memory<byte> buffer)
         {
