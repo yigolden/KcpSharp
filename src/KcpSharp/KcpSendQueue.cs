@@ -35,7 +35,7 @@ namespace KcpSharp
         private byte _operationMode; // 0-send 1-flush 2-wait for space
         private ReadOnlyMemory<byte> _buffer;
         private int _waitForByteCount;
-        private int _waitForFragmentCount;
+        private int _waitForSegmentCount;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
@@ -66,35 +66,35 @@ namespace KcpSharp
         void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        public bool TryGetAvailableSpace(out int byteCount, out int fragmentCount)
+        public bool TryGetAvailableSpace(out int byteCount, out int segmentCount)
         {
             lock (_queue)
             {
                 if (_transportClosed || _disposed)
                 {
                     byteCount = 0;
-                    fragmentCount = 0;
+                    segmentCount = 0;
                     return false;
                 }
                 if (_operationOngoing && _operationMode == 0)
                 {
                     byteCount = 0;
-                    fragmentCount = 0;
+                    segmentCount = 0;
                     return true;
                 }
-                GetAvailableSpaceCore(out byteCount, out fragmentCount);
+                GetAvailableSpaceCore(out byteCount, out segmentCount);
                 return true;
             }
         }
 
-        private void GetAvailableSpaceCore(out int byteCount, out int fragmentCount)
+        private void GetAvailableSpaceCore(out int byteCount, out int segmentCount)
         {
             int mss = _mss;
             int availableFragments = _capacity - _queue.Count;
             if (availableFragments < 0)
             {
                 byteCount = 0;
-                fragmentCount = 0;
+                segmentCount = 0;
                 return;
             }
             int availableBytes = availableFragments * mss;
@@ -107,27 +107,27 @@ namespace KcpSharp
                 }
             }
             byteCount = availableBytes;
-            fragmentCount = availableFragments;
+            segmentCount = availableFragments;
         }
 
-        public ValueTask<bool> WaitForAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken)
+        public ValueTask<bool> WaitForAvailableSpaceAsync(int minimumBytes, int minimumSegments, CancellationToken cancellationToken)
         {
             short token;
             lock (_queue)
             {
                 if (_transportClosed || _disposed)
                 {
-                    byteCount = 0;
-                    fragmentCount = 0;
+                    minimumBytes = 0;
+                    minimumSegments = 0;
                     return default;
                 }
-                if ((uint)byteCount > (uint)(_mss * _capacity))
+                if ((uint)minimumBytes > (uint)(_mss * _capacity))
                 {
-                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(byteCount))));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumBytes))));
                 }
-                if ((uint)fragmentCount > (uint)_capacity)
+                if ((uint)minimumSegments > (uint)_capacity)
                 {
-                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(fragmentCount))));
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumSegments))));
                 }
                 if (_operationOngoing)
                 {
@@ -137,8 +137,8 @@ namespace KcpSharp
                 {
                     return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
-                GetAvailableSpaceCore(out int currentByteCount, out int currentFragmentCount);
-                if (currentByteCount >= byteCount && currentFragmentCount >= fragmentCount)
+                GetAvailableSpaceCore(out int currentByteCount, out int currentSegmentCount);
+                if (currentByteCount >= minimumBytes && currentSegmentCount >= minimumSegments)
                 {
                     return new ValueTask<bool>(true);
                 }
@@ -147,8 +147,8 @@ namespace KcpSharp
                 _operationOngoing = true;
                 _forStream = false;
                 _operationMode = 2;
-                _waitForByteCount = byteCount;
-                _waitForFragmentCount = fragmentCount;
+                _waitForByteCount = minimumBytes;
+                _waitForSegmentCount = minimumSegments;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
             }
@@ -171,6 +171,7 @@ namespace KcpSharp
                     bytesWritten = 0;
                     return false;
                 }
+
                 int mss = _mss;
                 // Make sure there is enough space.
                 if (!allowPartialSend)
@@ -196,6 +197,7 @@ namespace KcpSharp
                         return false;
                     }
                 }
+
                 // Copy buffer content.
                 bytesWritten = 0;
                 if (_stream)
@@ -221,7 +223,7 @@ namespace KcpSharp
                     }
                 }
 
-                bool anyFragmentAdded = false;
+                bool anySegmentAdded = false;
                 int count = (buffer.Length <= mss) ? 1 : (buffer.Length + mss - 1) / mss;
                 Debug.Assert(count >= 1);
                 while (count > 0 && _queue.Count < _capacity)
@@ -237,14 +239,14 @@ namespace KcpSharp
                     _queue.AddLast(_cache.Rent(kcpBuffer, _stream ? (byte)0 : (byte)fragment));
                     Interlocked.Add(ref _unflushedBytes, size);
                     bytesWritten += size;
-                    anyFragmentAdded = true;
+                    anySegmentAdded = true;
                 }
 
-                if (anyFragmentAdded)
+                if (anySegmentAdded)
                 {
                     _updateNotification.TrySet(false);
                 }
-                return anyFragmentAdded;
+                return anySegmentAdded;
             }
         }
 
@@ -508,7 +510,7 @@ namespace KcpSharp
             _operationMode = 0;
             _buffer = default;
             _waitForByteCount = default;
-            _waitForFragmentCount = default;
+            _waitForSegmentCount = default;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
@@ -532,7 +534,7 @@ namespace KcpSharp
                     node.ValueRef = default;
                     _cache.Return(node);
 
-                    MoveOneFragmentIn();
+                    MoveOneSegmentIn();
                     CheckForAvailableSpace();
                     return true;
                 }
@@ -553,7 +555,7 @@ namespace KcpSharp
             }
         }
 
-        private void MoveOneFragmentIn()
+        private void MoveOneSegmentIn()
         {
             if (_operationOngoing && _operationMode == 0)
             {
@@ -581,8 +583,8 @@ namespace KcpSharp
         {
             if (_operationOngoing && _operationMode == 2)
             {
-                GetAvailableSpaceCore(out int byteCount, out int fragmentCount);
-                if (byteCount >= _waitForByteCount && fragmentCount >= _waitForFragmentCount)
+                GetAvailableSpaceCore(out int byteCount, out int segmentCount);
+                if (byteCount >= _waitForByteCount && segmentCount >= _waitForSegmentCount)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(true);

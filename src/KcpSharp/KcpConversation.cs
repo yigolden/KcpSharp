@@ -225,13 +225,13 @@ namespace KcpSharp
         public bool StreamMode => _stream;
 
         /// <summary>
-        /// Get the available byte count and available fragment count in the send queue.
+        /// Get the available byte count and available segment count in the send queue.
         /// </summary>
         /// <param name="byteCount">The available byte count in the send queue.</param>
-        /// <param name="fragmentCount">The available fragment count in the send queue.</param>
+        /// <param name="segmentCount">The available segment count in the send queue.</param>
         /// <returns>True if the transport is not closed. Otherwise false.</returns>
-        public bool TryGetSendQueueAvailableSpace(out int byteCount, out int fragmentCount)
-            => _sendQueue.TryGetAvailableSpace(out byteCount, out fragmentCount);
+        public bool TryGetSendQueueAvailableSpace(out int byteCount, out int segmentCount)
+            => _sendQueue.TryGetAvailableSpace(out byteCount, out segmentCount);
 
         /// <summary>
         /// Try to put message into the send queue.
@@ -256,16 +256,16 @@ namespace KcpSharp
             => _sendQueue.TrySend(buffer, allowPartialSend, out bytesWritten);
 
         /// <summary>
-        /// Wait until the send queue contains at least <paramref name="byteCount"/> bytes of free space, and also <paramref name="fragmentCount"/> available segments.
+        /// Wait until the send queue contains at least <paramref name="minimumBytes"/> bytes of free space, and also <paramref name="minimumSegments"/> available segments.
         /// </summary>
-        /// <param name="byteCount">The number of bytes in the available space.</param>
-        /// <param name="fragmentCount">The count of fragment in the available space.</param>
+        /// <param name="minimumBytes">The number of bytes in the available space.</param>
+        /// <param name="minimumSegments">The count of segments in the available space.</param>
         /// <param name="cancellationToken">The token to cancel this operation.</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="byteCount"/> or <paramref name="fragmentCount"/> is larger than the total space of the send queue.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="minimumBytes"/> or <paramref name="minimumSegments"/> is larger than the total space of the send queue.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when there is enough space in the send queue. The result of the task is false when the transport is closed.</returns>
-        public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken = default)
-            => _sendQueue.WaitForAvailableSpaceAsync(byteCount, fragmentCount, cancellationToken);
+        public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int minimumBytes, int minimumSegments, CancellationToken cancellationToken = default)
+            => _sendQueue.WaitForAvailableSpaceAsync(minimumBytes, minimumSegments, cancellationToken);
 
         /// <summary>
         /// Put message into the send queue.
