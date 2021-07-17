@@ -14,7 +14,7 @@ using LinkedListNodeOfQueueItem = System.Collections.Generic.LinkedListNode<(Kcp
 
 namespace KcpSharp
 {
-    internal sealed class KcpReceiveQueue : IValueTaskSource<KcpConversationReceiveResult>, IValueTaskSource<int>, IDisposable
+    internal sealed class KcpReceiveQueue : IValueTaskSource<KcpConversationReceiveResult>, IValueTaskSource<int>, IValueTaskSource<bool>, IDisposable
     {
         private ManualResetValueTaskSourceCore<KcpConversationReceiveResult> _mrvtsc;
 
@@ -27,8 +27,9 @@ namespace KcpSharp
         private bool _disposed;
 
         private bool _operationOngoing;
-        private bool _bufferProvided;
+        private byte _operationMode; // 0-receive 1-wait for message 2-wait for available data
         private Memory<byte> _buffer;
+        private int _minimumBytes;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
@@ -51,6 +52,11 @@ namespace KcpSharp
         int IValueTaskSource<int>.GetResult(short token) => _mrvtsc.GetResult(token).BytesReceived;
         ValueTaskSourceStatus IValueTaskSource<int>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<int>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+            => _mrvtsc.OnCompleted(continuation, state, token, flags);
+
+        bool IValueTaskSource<bool>.GetResult(short token) => !_mrvtsc.GetResult(token).TransportClosed;
+        ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
+        void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
         public bool TryPeek(out KcpConversationReceiveResult result)
@@ -111,8 +117,9 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
-                _bufferProvided = false;
+                _operationMode = 1;
                 _buffer = default;
+                _minimumBytes = 0;
                 _cancellationToken = cancellationToken;
 
                 token = _mrvtsc.Version;
@@ -136,6 +143,49 @@ namespace KcpSharp
             return new ValueTask<KcpConversationReceiveResult>(this, token);
         }
 
+        public ValueTask<bool> WaitForAvailableDataAsync(int minimumBytes, CancellationToken cancellationToken)
+        {
+            if (minimumBytes < 0)
+            {
+                return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumBytes))));
+            }
+
+            short token;
+            lock (_queue)
+            {
+                if (_transportClosed || _disposed)
+                {
+                    return default;
+                }
+                if (_operationOngoing)
+                {
+                    return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentReceiveException()));
+                }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
+                }
+
+                if (CheckQueeuSize(_queue, minimumBytes))
+                {
+                    return new ValueTask<bool>(true);
+                }
+
+                _mrvtsc.Reset();
+                _operationOngoing = true;
+                _operationMode = 2;
+                _buffer = default;
+                _minimumBytes = minimumBytes;
+                _cancellationToken = cancellationToken;
+
+                token = _mrvtsc.Version;
+            }
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((KcpReceiveQueue?)state)!.SetCanceled(), this);
+
+            return new ValueTask<bool>(this, token);
+        }
+
+
         public bool TryReceive(Span<byte> buffer, out KcpConversationReceiveResult result)
         {
             lock (_queue)
@@ -157,7 +207,7 @@ namespace KcpSharp
                 }
 
                 _operationOngoing = true;
-                _bufferProvided = true;
+                _operationMode = 0;
 
                 ConsumePacket(buffer, out result, out bool bufferTooSmall);
                 ClearPreviousOperation();
@@ -189,7 +239,7 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
-                _bufferProvided = true;
+                _operationMode = 0;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
 
@@ -233,7 +283,7 @@ namespace KcpSharp
 
                 _mrvtsc.Reset();
                 _operationOngoing = true;
-                _bufferProvided = true;
+                _operationMode = 0;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
 
@@ -287,8 +337,9 @@ namespace KcpSharp
         private void ClearPreviousOperation()
         {
             _operationOngoing = false;
-            _bufferProvided = false;
+            _operationMode = 0;
             _buffer = default;
+            _minimumBytes = default;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
@@ -331,17 +382,41 @@ namespace KcpSharp
                     _completedPacketsCount++;
                     if (_operationOngoing)
                     {
-                        ConsumePacket(_buffer.Span, out KcpConversationReceiveResult result, out bool bufferTooSmall);
-                        ClearPreviousOperation();
-                        if (bufferTooSmall)
-                        {
-                            _mrvtsc.SetException(ThrowHelper.NewBufferTooSmallForBufferArgument());
-                        }
-                        else
-                        {
-                            _mrvtsc.SetResult(result);
-                        }
+                        TryCompleteReceive();
+                        TryCompleteWaitForData();
                     }
+                }
+            }
+        }
+
+        private void TryCompleteReceive()
+        {
+            Debug.Assert(_operationOngoing);
+
+            if (_operationMode <= 1)
+            {
+                Debug.Assert(_operationMode == 0 || _operationMode == 1);
+                ConsumePacket(_buffer.Span, out KcpConversationReceiveResult result, out bool bufferTooSmall);
+                ClearPreviousOperation();
+                if (bufferTooSmall)
+                {
+                    _mrvtsc.SetException(ThrowHelper.NewBufferTooSmallForBufferArgument());
+                }
+                else
+                {
+                    _mrvtsc.SetResult(result);
+                }
+            }
+        }
+
+        private void TryCompleteWaitForData()
+        {
+            if (_operationMode == 2)
+            {
+                if (CheckQueeuSize(_queue, _minimumBytes))
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetResult(new KcpConversationReceiveResult(0));
                 }
             }
         }
@@ -359,7 +434,7 @@ namespace KcpSharp
             }
 
             // peek
-            if (!_bufferProvided)
+            if (_operationMode == 1)
             {
                 if (CalculatePacketSize(node, out int bytesRecevied))
                 {
@@ -372,6 +447,8 @@ namespace KcpSharp
                 bufferTooSmall = false;
                 return;
             }
+
+            Debug.Assert(_operationMode == 0);
 
             // ensure buffer is big enough
             int bytesInPacket = 0;
@@ -486,6 +563,23 @@ namespace KcpSharp
             // deadlink
             packetSize = 0;
             return false;
+        }
+
+        private static bool CheckQueeuSize(LinkedListOfQueueItem queue, int minimumBytes)
+        {
+            LinkedListNodeOfQueueItem? node = queue.First;
+            while (node is not null)
+            {
+                ref KcpBuffer buffer = ref node.ValueRef.Data;
+                if (buffer.Length >= minimumBytes)
+                {
+                    return true;
+                }
+                minimumBytes -= buffer.Length;
+                node = node.Next;
+            }
+
+            return minimumBytes == 0;
         }
 
         public void SetTransportClosed()

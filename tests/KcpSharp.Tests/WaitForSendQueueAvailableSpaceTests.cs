@@ -13,7 +13,7 @@ namespace KcpSharp.Tests
         [InlineData(true, false)]
         [InlineData(true, true)]
         [Theory]
-        public async Task TestTransportClosed(bool streamMode, bool dispose)
+        public async Task TestTransportClosedBeforeWait(bool streamMode, bool dispose)
         {
             var blackholeConnection = new Mock<IKcpTransport>();
             blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
@@ -29,10 +29,40 @@ namespace KcpSharp.Tests
                 conversation.SetTransportClosed();
             }
 
-            await TestHelper.RunWithTimeout(TimeSpan.FromSeconds(2), async cancellationToken =>
+            Task<bool> waitTask = conversation.WaitForSendQueueAvailableSpaceAsync(0, 0, CancellationToken.None).AsTask();
+            Assert.True(waitTask.IsCompletedSuccessfully);
+            Assert.False(await waitTask);
+        }
+
+        [InlineData(false, false)]
+        [InlineData(false, true)]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        [Theory]
+        public async Task TestTransportClosedAfterWait(bool streamMode, bool dispose)
+        {
+            var blackholeConnection = new Mock<IKcpTransport>();
+            blackholeConnection.Setup(conn => conn.SendPacketAsync(It.IsAny<Memory<byte>>(), It.IsAny<CancellationToken>()))
+                .Returns(ValueTask.CompletedTask);
+
+            const int mtu = 1400;
+            const int mss = mtu - 24;
+
+            var conversation = new KcpConversation(blackholeConnection.Object, 0, new KcpConversationOptions { StreamMode = streamMode, SendQueueSize = 4, SendWindow = 2, RemoteReceiveWindow = 2, DisableCongestionControl = true });
+            Assert.True(conversation.TrySend(new byte[mss * 4]));
+            Task<bool> waitTask = conversation.WaitForSendQueueAvailableSpaceAsync(4 * mss, 0, CancellationToken.None).AsTask();
+            Assert.False(waitTask.IsCompleted);
+            if (dispose)
             {
-                Assert.False(await conversation.WaitForSendQueueAvailableSpaceAsync(0, 0, CancellationToken.None));
-            });
+                conversation.Dispose();
+            }
+            else
+            {
+                conversation.SetTransportClosed();
+            }
+            await Task.Delay(200);
+            Assert.True(waitTask.IsCompletedSuccessfully);
+            Assert.False(await waitTask);
         }
 
         [InlineData(false, false, 1, 0)]

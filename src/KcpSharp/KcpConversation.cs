@@ -264,7 +264,7 @@ namespace KcpSharp
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="byteCount"/> or <paramref name="fragmentCount"/> is larger than the total space of the send queue.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when there is enough space in the send queue. The result of the task is false when the transport is closed.</returns>
-        public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken)
+        public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken = default)
             => _sendQueue.WaitForAvailableSpaceAsync(byteCount, fragmentCount, cancellationToken);
 
         /// <summary>
@@ -1270,6 +1270,18 @@ namespace KcpSharp
         /// <returns>A <see cref="ValueTask{KcpConversationReceiveResult}"/> that completes when the receive queue contains at least one full message, or at least one byte in stream mode. Its result contains the transport state and the size of the available message.</returns>
         public ValueTask<KcpConversationReceiveResult> WaitToReceiveAsync(CancellationToken cancellationToken = default)
             => _receiveQueue.WaitToReceiveAsync(cancellationToken);
+
+        /// <summary>
+        /// Wait until the receive queue contains at leat <paramref name="minimumBytes"/> bytes.
+        /// </summary>
+        /// <param name="minimumBytes">The minimum bytes in the receive queue.</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="minimumBytes"/> is a negative integer.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before receive operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the receive queue contains at least <paramref name="minimumBytes"/> bytes. The result of the task is false when the transport is closed.</returns>
+        public ValueTask<bool> WaitForReceiveQueueAvailableDataAsync(int minimumBytes, CancellationToken cancellationToken = default)
+            => _receiveQueue.WaitForAvailableDataAsync(minimumBytes, cancellationToken);
 
         /// <summary>
         /// Wait for the next full message to arrive if the receive queue is empty. Remove the next available message in the receive queue and copy its content into <paramref name="buffer"/>. When in stream mode, move as many bytes as possible into <paramref name="buffer"/>.
