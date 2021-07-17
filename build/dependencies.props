@@ -9,10 +9,10 @@
     <NerdbankGitVersioningPackageVersion>3.4.220</NerdbankGitVersioningPackageVersion>
     <MicrosoftDotNetPackageValidationPackageVersion>1.0.0-preview.6.21355.3</MicrosoftDotNetPackageValidationPackageVersion>
 
-    <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0-preview.6.21352.12</MicrosoftBclAsyncInterfacesPackageVersion>
+    <MicrosoftBclAsyncInterfacesPackageVersion>5.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
     <SystemMemoryPackageVersion>4.5.4</SystemMemoryPackageVersion>
-    <SystemRuntimeCompilerServicesUnsafePackageVersion>6.0.0-preview.6.21352.12</SystemRuntimeCompilerServicesUnsafePackageVersion>
+    <SystemRuntimeCompilerServicesUnsafePackageVersion>5.0.0</SystemRuntimeCompilerServicesUnsafePackageVersion>
     <SystemThreadingTasksExtensionsPackageVersion>4.5.4</SystemThreadingTasksExtensionsPackageVersion>
   </PropertyGroup>
 </Project>
