@@ -38,13 +38,16 @@ namespace KcpEcho
             return command;
 
             Option ListenOption() =>
-                new Option<string>("--listen", "Endpoint where the server listens.", ArgumentArity.ExactlyOne);
+                new Option<string>("--listen", "Endpoint where the server listens.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
+                new Option<int>("--mtu", () => 1400, "MTU.");
 
             Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID. [0]");
+                new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
         }
 
         static Command BuildClientCommand()
@@ -57,13 +60,16 @@ namespace KcpEcho
             return command;
 
             Option EndpointOption() =>
-                new Option<string>("--endpoint", "Endpoint which the client connects to.", ArgumentArity.ExactlyOne);
+                new Option<string>("--endpoint", "Endpoint which the client connects to.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
+                new Option<int>("--mtu", () => 1400, "MTU.");
 
             Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID. [0]");
+                new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
 
         }
     }

@@ -38,10 +38,16 @@ namespace KcpTunnel
             return command;
 
             Option ListenOption() =>
-                new Option<string>("--listen", "Endpoint where the server listens.", ArgumentArity.ExactlyOne);
+                new Option<string>("--listen", "Endpoint where the server listens.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option TcpForwardOption() =>
-                new Option<string>("--tcp-forward", "The TCP endpoint to forward to.", ArgumentArity.ExactlyOne);
+                new Option<string>("--tcp-forward", "The TCP endpoint to forward to.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
                 new Option<int>("--mtu", () => 1400, "MTU.");
@@ -57,10 +63,16 @@ namespace KcpTunnel
             return command;
 
             Option EndpointOption() =>
-                new Option<string>("--endpoint", "Endpoint which the client connects to.", ArgumentArity.ExactlyOne);
+                new Option<string>("--endpoint", "Endpoint which the client connects to.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option TcpListenOption() =>
-                new Option<string>("--tcp-listen", "The TCP endpoint to listen on.", ArgumentArity.ExactlyOne);
+                new Option<string>("--tcp-listen", "The TCP endpoint to listen on.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
                 new Option<int>("--mtu", () => 1400, "MTU.");

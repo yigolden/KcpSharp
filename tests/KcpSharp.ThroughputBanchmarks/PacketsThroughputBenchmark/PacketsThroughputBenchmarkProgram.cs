@@ -27,19 +27,22 @@ namespace KcpSharp.ThroughputBanchmarks.PacketsThroughputBenchmark
             return command;
 
             Option ListenOption() =>
-                new Option<string>("--listen", "Endpoint where the server listens.", ArgumentArity.ExactlyOne);
+                new Option<string>("--listen", "Endpoint where the server listens.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
+                new Option<int>("--mtu", () => 1400, "MTU.");
 
             Option WindowSizeOption() =>
-                new Option<int>("--window-size", () => 128, "Window size. [128]");
+                new Option<int>("--window-size", () => 128, "Window size.");
 
             Option UpdateIntervalOption() =>
-                new Option<int>("--update-interval", () => 50, "Update interval. [50]");
+                new Option<int>("--update-interval", () => 50, "Update interval.");
 
             Option NoDelayOption() =>
-                new Option<bool>("--no-delay", () => false, "No delay mode. [false]");
+                new Option<bool>("--no-delay", () => false, "No delay mode.");
 
         }
 
@@ -64,28 +67,31 @@ namespace KcpSharp.ThroughputBanchmarks.PacketsThroughputBenchmark
             return command;
 
             Option ListenOption() =>
-                new Option<string>("--endpoint", "Endpoint which the client connects to.", ArgumentArity.ExactlyOne);
+                new Option<string>("--endpoint", "Endpoint which the client connects to.")
+                {
+                    Arity = ArgumentArity.ExactlyOne
+                };
 
             Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU. [1400]");
+                new Option<int>("--mtu", () => 1400, "MTU.");
 
             Option ConcurrencyOption() =>
-                new Option<int>("--concurrency", () => 1, "Concurrency. [1]");
+                new Option<int>("--concurrency", () => 1, "Concurrency.");
 
             Option PacketSizeOption() =>
-                new Option<int>("--packet-size", () => 1376, "Packet size. [1376]");
+                new Option<int>("--packet-size", () => 1376, "Packet size.");
 
             Option WindowSizeOption() =>
-                new Option<int>("--window-size", () => 128, "Window size. [128]");
+                new Option<int>("--window-size", () => 128, "Window size.");
 
             Option QueueSizeOption() =>
-                new Option<int>("--queue-size", () => 256, "Queue size. [256]");
+                new Option<int>("--queue-size", () => 256, "Queue size.");
 
             Option UpdateIntervalOption() =>
-                new Option<int>("--update-interval", () => 50, "Update interval. [50]");
+                new Option<int>("--update-interval", () => 50, "Update interval.");
 
             Option NoDelayOption() =>
-                new Option<bool>("--no-delay", () => false, "No delay mode. [false]");
+                new Option<bool>("--no-delay", () => false, "No delay mode.");
 
         }
 
