@@ -69,38 +69,36 @@ namespace KcpTunnel
 
         private async Task PumpFromKcpToTcp(CancellationToken cancellationToken)
         {
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(ushort.MaxValue + 2);
-            try
+            bool connectionClosed = false;
+            while (true)
             {
-                bool connectionClosed = false;
-                while (true)
+                if (!await _conversation.WaitForReceiveQueueAvailableDataAsync(2, cancellationToken).ConfigureAwait(false))
                 {
-                    // read segment length;
-                    int bytesReceived = 0;
-                    KcpConversationReceiveResult result;
-                    while (bytesReceived < 2)
-                    {
-                        result = await _conversation.ReceiveAsync(buffer.AsMemory(bytesReceived, 2 - bytesReceived), cancellationToken);
-                        if (result.TransportClosed)
-                        {
-                            return;
-                        }
-                        bytesReceived += result.BytesReceived;
-                    }
+                    return;
+                }
 
-                    int length = BinaryPrimitives.ReadUInt16LittleEndian(buffer);
-                    if (length == 0)
-                    {
-                        // connection closed signal
-                        _socket.Dispose();
-                        return;
-                    }
+                int length = ReadLength(_conversation, out KcpConversationReceiveResult result);
+                if (result.TransportClosed)
+                {
+                    return;
+                }
+
+                if (length == 0)
+                {
+                    // connection closed signal
+                    _socket.Dispose();
+                    return;
+                }
+
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    Memory<byte> memory = buffer.AsMemory(0, length);
 
                     // forward data
-                    Memory<byte> memory = buffer.AsMemory(2, length);
                     while (!memory.IsEmpty)
                     {
-                        result = await _conversation.ReceiveAsync(memory, cancellationToken);
+                        result = await _conversation.ReceiveAsync(memory, cancellationToken).ConfigureAwait(false);
                         if (result.TransportClosed)
                         {
                             break;
@@ -110,7 +108,7 @@ namespace KcpTunnel
                         {
                             try
                             {
-                                await _socket.SendAsync(memory.Slice(0, result.BytesReceived), SocketFlags.None, cancellationToken);
+                                await _socket.SendAsync(memory.Slice(0, result.BytesReceived), SocketFlags.None, cancellationToken).ConfigureAwait(false);
                             }
                             catch
                             {
@@ -121,17 +119,23 @@ namespace KcpTunnel
                         memory = memory.Slice(result.BytesReceived);
                     }
                 }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
 
+            static ushort ReadLength(KcpConversation conversation, out KcpConversationReceiveResult result)
+            {
+                Span<byte> buffer = stackalloc byte[2];
+                conversation.TryReceive(buffer, out result);
+                return BinaryPrimitives.ReadUInt16LittleEndian(buffer);
+            }
         }
 
         private async Task PumpFromTcpToKcp(CancellationToken cancellationToken)
         {
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(ushort.MaxValue + 2);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(ushort.MaxValue);
             try
             {
                 while (true)
@@ -140,7 +144,7 @@ namespace KcpTunnel
                     int bytesReceived;
                     try
                     {
-                        bytesReceived = await _socket.ReceiveAsync(buffer.AsMemory(2, ushort.MaxValue), SocketFlags.None, cancellationToken);
+                        bytesReceived = await _socket.ReceiveAsync(buffer.AsMemory(0, ushort.MaxValue), SocketFlags.None, cancellationToken).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -151,26 +155,41 @@ namespace KcpTunnel
                     // send connection close signal
                     if (bytesReceived == 0)
                     {
-                        buffer[1] = 0;
-                        buffer[0] = 0;
-                        await _conversation.SendAsync(buffer.AsMemory(0, 2), cancellationToken);
-                        await _conversation.FlushAsync(cancellationToken);
+                        await _conversation.WaitForSendQueueAvailableSpaceAsync(2, 0, cancellationToken).ConfigureAwait(false);
+                        if (SendLength(_conversation, 0))
+                        {
+                            await _conversation.FlushAsync(cancellationToken).ConfigureAwait(false);
+                        }
                         return;
                     }
 
                     // forward to kcp conversation
-                    BinaryPrimitives.WriteUInt16LittleEndian(buffer, (ushort)bytesReceived);
-                    if (!await _conversation.SendAsync(buffer.AsMemory(0, 2 + bytesReceived), cancellationToken))
+                    if (!await _conversation.WaitForSendQueueAvailableSpaceAsync(2, 0, cancellationToken).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                    if (!SendLength(_conversation, (ushort)bytesReceived))
+                    {
+                        return;
+                    }
+                    if (!await _conversation.SendAsync(buffer.AsMemory(0, bytesReceived), cancellationToken).ConfigureAwait(false))
                     {
                         return;
                     }
                 }
+
             }
             finally
             {
                 ArrayPool<byte>.Shared.Return(buffer);
             }
 
+            static bool SendLength(KcpConversation conversation, ushort length)
+            {
+                Span<byte> buffer = stackalloc byte[2];
+                BinaryPrimitives.WriteUInt16LittleEndian(buffer, length);
+                return conversation.TrySend(buffer);
+            }
         }
     }
 }
