@@ -263,7 +263,7 @@ namespace KcpSharp
         /// <param name="cancellationToken">The token to cancel this operation.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="byteCount"/> or <paramref name="fragmentCount"/> is larger than the total space of the send queue.</exception>
         /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before send operation is completed. Or <see cref="CancelPendingSend(Exception?, CancellationToken)"/> is called before this operation is completed.</exception>
-        /// <returns></returns>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when there is enough space in the send queue. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> WaitForSendQueueAvailableSpaceAsync(int byteCount, int fragmentCount, CancellationToken cancellationToken)
             => _sendQueue.WaitForAvailableSpaceAsync(byteCount, fragmentCount, cancellationToken);
 
