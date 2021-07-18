@@ -46,11 +46,7 @@ namespace KcpSharp.ThroughputBanchmarks.PacketsThroughputBenchmark
             }
             socket.Bind(ipEndPoint);
 
-            var dispatcher = new UdpSocketServiceDispatcher<PacketsThroughputBenchmarkService>(
-                socket, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5),
-                (sender, ep, state) => new PacketsThroughputBenchmarkService(sender, ep, (KcpConversationOptions?)state!),
-                (service, state) => service.Dispose(),
-                options);
+            var dispatcher = UdpSocketServiceDispatcher.Create(socket, new PacketsThroughputBenchmarkServiceFactory(options));
             await dispatcher.RunAsync(ipEndPoint, GC.AllocateUninitializedArray<byte>(mtu), cancellationToken);
         }
     }

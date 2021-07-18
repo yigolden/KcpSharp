@@ -105,6 +105,6 @@ namespace KcpSharp.ThroughputBanchmarks
             }
         }
 
-        KcpRentedBuffer IKcpBufferPool.Rent(KcpBufferPoolRentOptions options) => options.IsOutbound ? KcpRentedBuffer.FromMemoryOwner(Rent(options.Size)) : KcpRentedBuffer.FromSharedArrayPool(options.Size);
+        KcpRentedBuffer IKcpBufferPool.Rent(KcpBufferPoolRentOptions options) => options.Size <= _blockSize ? KcpRentedBuffer.FromMemoryOwner(Rent(_blockSize)) : KcpRentedBuffer.FromSharedArrayPool(options.Size);
     }
 }
