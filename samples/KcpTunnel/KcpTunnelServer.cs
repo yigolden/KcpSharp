@@ -63,7 +63,7 @@ namespace KcpTunnel
                 ForwardEndPoint = _forwardEndPoint,
                 Mtu = _mtu
             });
-            using var dispatcher = new UdpSocketServiceDispatcher<KcpTunnelService>(socket, factory);
+            using var dispatcher = UdpSocketServiceDispatcher.Create(socket, factory);
             await dispatcher.RunAsync(_listenEndPoint, GC.AllocateUninitializedArray<byte>(_mtu), cancellationToken);
         }
     }
