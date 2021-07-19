@@ -37,6 +37,7 @@ namespace KcpSharp.Benchmarks
             _bufferPool.Fill(WindowSize * 2 + QueueSize * 2 + PipeCapacity * 2);
             _pipe = new PerfectKcpConversationPipe(_bufferPool, MTU, PipeCapacity, new KcpConversationOptions
             {
+                BufferPool = _bufferPool,
                 Mtu = MTU,
                 UpdateInterval = UpdateInterval,
                 StreamMode = true,
