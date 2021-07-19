@@ -46,7 +46,6 @@ namespace KcpSharp
         private KcpProbeType _probe;
         private SpinLock _cwndUpdateLock;
 
-        private uint _current;
         private uint _interval;
         private uint _ts_flush;
         private uint _xmit;
@@ -392,7 +391,7 @@ namespace KcpSharp
                 }
             }
 
-            uint current = _current = GetTimestamp();
+            uint current = GetTimestamp();
 
             // probe window size (if remote window size equals zero)
             if (_rmt_wnd == 0)
@@ -669,13 +668,10 @@ namespace KcpSharp
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    uint current = _current = GetTimestamp();
-
-                    int wait = Check(current);
+                    int wait = Check(GetTimestamp());
                     if (wait != 0)
                     {
                         await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                        current = _current = GetTimestamp();
                         ev.TrySet(true);
                     }
                     else
@@ -713,18 +709,17 @@ namespace KcpSharp
                 {
                     bool isPeriodic = await ev.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    uint current;
+                    uint current = GetTimestamp();
                     if (!isPeriodic)
                     {
-                        current = _current = GetTimestamp();
                         int wait = Check(current);
                         if (wait != 0)
                         {
                             await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
                         }
+                        current = GetTimestamp();
                     }
 
-                    current = _current = GetTimestamp();
                     try
                     {
                         await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
@@ -856,6 +851,7 @@ namespace KcpSharp
 
         private void SetInput(ReadOnlySpan<byte> packet)
         {
+            uint current = GetTimestamp();
             int packetHeaderSize = _id.HasValue ? 24 : 20;
 
             uint prev_una = _snd_una;
@@ -901,7 +897,7 @@ namespace KcpSharp
 
                 if (header.Command == KcpCommand.Ack)
                 {
-                    int rtt = TimeDiff(_current, header.Timestamp);
+                    int rtt = TimeDiff(current, header.Timestamp);
                     if (rtt >= 0)
                     {
                         UpdateRto(rtt);
