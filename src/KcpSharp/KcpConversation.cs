@@ -48,14 +48,12 @@ namespace KcpSharp
 
         private uint _interval;
         private uint _ts_flush;
-        private uint _xmit;
         private bool _updated;
 
         private bool _nodelay;
         private uint _ts_probe;
         private uint _probe_wait;
 
-        private uint _dead_link;
         private uint _incr;
 
         private readonly KcpSendReceiveQueueItemCache _queueItemCache;
@@ -174,8 +172,6 @@ namespace KcpSharp
             _fastlimit = 5;
             _nocwnd = options is not null && options.DisableCongestionControl;
             _stream = options is not null && options.StreamMode;
-
-            _dead_link = 20;
 
             _updateEvent = new KcpConversationUpdateNotification();
             _queueItemCache = new KcpSendReceiveQueueItemCache();
@@ -519,7 +515,6 @@ namespace KcpSharp
                 else if (TimeDiff(current, stats.ResendTimestamp) >= 0)
                 {
                     needsend = true;
-                    _xmit++;
                     uint rto = stats.Rto;
                     if (!_nodelay)
                     {
@@ -565,12 +560,6 @@ namespace KcpSharp
                     {
                         data.DataRegion.CopyTo(buffer.Slice(size));
                         size += data.Length;
-                    }
-
-                    if (stats.TransmitCount >= _dead_link)
-                    {
-                        // TODO dead link
-                        // state = -1;
                     }
                 }
 
