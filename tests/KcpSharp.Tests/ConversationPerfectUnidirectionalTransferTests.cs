@@ -177,7 +177,7 @@ namespace KcpSharp.Tests
                 Random.Shared.NextBytes(packet);
             }
 
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(30), async cancellationToken =>
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30 });
 
@@ -231,7 +231,7 @@ namespace KcpSharp.Tests
         public Task TestBigFileStreamSendReceive(int fileSize, int receiveBufferSize, bool waitToReceive)
         {
             Assert.True(receiveBufferSize < fileSize);
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(15), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(30), async cancellationToken =>
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendQueueSize = 16, SendWindow = 8, ReceiveWindow = 8, UpdateInterval = 30, StreamMode = true });
 
