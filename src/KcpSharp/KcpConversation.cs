@@ -1228,14 +1228,9 @@ namespace KcpSharp
             }
         }
 
-        private static uint GetTimestamp()
-        {
-            return (uint)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        }
+        private static uint GetTimestamp() => (uint)Environment.TickCount;
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int TimeDiff(uint later, uint earlier)
-            => (int)(later - earlier);
+        private static int TimeDiff(uint later, uint earlier) => (int)(later - earlier);
 
         /// <summary>
         /// Get the size of the next available message in the receive queue.
