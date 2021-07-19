@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.6.30114.105
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31512.422
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{1373C632-983E-4EB2-ABF5-58184170F081}"
 EndProject
@@ -20,6 +20,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KcpChatWasm", "samples\KcpChatWasm\KcpChatWasm.csproj", "{4EE2D977-6887-4BA5-AB29-4BBEB995F568}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KcpTunnel", "samples\KcpTunnel\KcpTunnel.csproj", "{E102AF06-8746-4FA3-A68C-0FCB2ECBA44C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KcpSharp.Benchmarks", "tests\KcpSharp.Benchmarks\KcpSharp.Benchmarks.csproj", "{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -103,6 +105,18 @@ Global
 		{E102AF06-8746-4FA3-A68C-0FCB2ECBA44C}.Release|x64.Build.0 = Release|Any CPU
 		{E102AF06-8746-4FA3-A68C-0FCB2ECBA44C}.Release|x86.ActiveCfg = Release|Any CPU
 		{E102AF06-8746-4FA3-A68C-0FCB2ECBA44C}.Release|x86.Build.0 = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|x64.Build.0 = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Debug|x86.Build.0 = Debug|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|x64.ActiveCfg = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|x64.Build.0 = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|x86.ActiveCfg = Release|Any CPU
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -114,6 +128,7 @@ Global
 		{8CF7FC01-586F-4726-B603-9BD165EC2076} = {AF3B67EF-4E3D-4E41-9CA7-4844FEF4534C}
 		{4EE2D977-6887-4BA5-AB29-4BBEB995F568} = {AF3B67EF-4E3D-4E41-9CA7-4844FEF4534C}
 		{E102AF06-8746-4FA3-A68C-0FCB2ECBA44C} = {AF3B67EF-4E3D-4E41-9CA7-4844FEF4534C}
+		{E1EE282B-3A24-4562-B04A-677B9E7B6F1B} = {A8C1D402-98C1-4DEB-B8CD-9F02040D54C4}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6C4ADA53-E05B-48DD-B8CC-A947B32C54AD}
