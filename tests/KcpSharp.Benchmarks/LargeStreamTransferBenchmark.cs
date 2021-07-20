@@ -14,13 +14,13 @@ namespace KcpSharp.Benchmarks
         private const int MTU = 1400;
         private const int fileSize = 16 * 1024 * 1024; // 16MB
 
-        [Params(128)]
+        [Params(256)]
         public int WindowSize { get; set; }
 
         [Params(512)]
         public int QueueSize { get; set; }
 
-        [Params(50)]
+        [Params(30, 50, 100)]
         public int UpdateInterval { get; set; }
 
         [Params(512)]
