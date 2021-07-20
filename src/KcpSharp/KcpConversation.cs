@@ -701,12 +701,19 @@ namespace KcpSharp
                     uint current = GetTimestamp();
                     if (!isPeriodic)
                     {
-                        int wait = Check(current);
-                        if (wait != 0)
+                        if (_nodelay)
                         {
-                            await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+                            _ts_flush = current;
                         }
-                        current = GetTimestamp();
+                        else
+                        {
+                            int wait = Check(current);
+                            if (wait != 0)
+                            {
+                                await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
+                            }
+                            current = GetTimestamp();
+                        }
                     }
 
                     try
