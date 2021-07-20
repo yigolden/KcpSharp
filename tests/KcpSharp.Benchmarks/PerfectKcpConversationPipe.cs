@@ -93,7 +93,10 @@ namespace KcpSharp.Benchmarks
             }
             KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mtu, false));
             packet.CopyTo(owner.Memory);
-            _output.TryWrite((owner, packet.Length));
+            if (!_output.TryWrite((owner, packet.Length)))
+            {
+                owner.Dispose();
+            }
             return default;
         }
 
