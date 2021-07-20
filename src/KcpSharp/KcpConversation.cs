@@ -48,7 +48,6 @@ namespace KcpSharp
 
         private uint _interval;
         private uint _ts_flush;
-        private bool _updated;
 
         private bool _nodelay;
         private uint _ts_probe;
@@ -182,7 +181,7 @@ namespace KcpSharp
             _checkLoopCts = new CancellationTokenSource();
             _updateLoopCts = new CancellationTokenSource();
 
-            _ts_flush = _interval;
+            _ts_flush = GetTimestamp();
 
             _ = Task.Run(() => CheckAndSignalLoopAsync(_checkLoopCts));
             _ = Task.Run(() => RunUpdateOnEventLoopAsync(_updateLoopCts));
@@ -738,12 +737,6 @@ namespace KcpSharp
 
         private ValueTask UpdateCoreAsync(uint current, CancellationToken cancellationToken)
         {
-            if (!_updated)
-            {
-                _updated = true;
-                _ts_flush = current;
-            }
-
             long slap = TimeDiff(current, _ts_flush);
             if (slap > 10000 || slap < -10000)
             {
