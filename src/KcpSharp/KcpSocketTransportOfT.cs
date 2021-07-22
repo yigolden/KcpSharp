@@ -282,7 +282,7 @@ namespace KcpSharp
         }
 
         /// <summary>
-        /// Disposed all the managed and the unmanaged resources used by this instance.
+        /// Dispose all the managed and the unmanaged resources used by this instance.
         /// </summary>
         /// <param name="disposing">If managed resources should be disposed.</param>
         protected virtual void Dispose(bool disposing)
