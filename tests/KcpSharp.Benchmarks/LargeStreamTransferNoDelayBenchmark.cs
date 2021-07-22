@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
@@ -12,12 +9,12 @@ namespace KcpSharp.Benchmarks
     public class LargeStreamTransferNoDelayBenchmark
     {
         private const int MTU = 1400;
-        private const int fileSize = 16 * 1024 * 1024; // 16MB
+        private const int fileSize = 128 * 1024 * 1024; // 128MB
 
-        [Params(256)]
+        [Params(64)]
         public int WindowSize { get; set; }
 
-        [Params(512)]
+        [Params(256)]
         public int QueueSize { get; set; }
 
         [Params(30, 50, 100)]

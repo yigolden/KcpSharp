@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace KcpSharp.Benchmarks
@@ -9,8 +9,8 @@ namespace KcpSharp.Benchmarks
     {
         private readonly PerfectOneWayConnection _alice;
         private readonly PerfectOneWayConnection _bob;
-        private readonly Channel<(KcpRentedBuffer Owner, int Length)> _aliceToBobChannel;
-        private readonly Channel<(KcpRentedBuffer Owner, int Length)> _bobToAliceChannel;
+        private readonly PreallocatedQueue<(KcpRentedBuffer Owner, int Length)> _aliceToBobChannel;
+        private readonly PreallocatedQueue<(KcpRentedBuffer Owner, int Length)> _bobToAliceChannel;
         private readonly CancellationTokenSource _cts;
 
         public KcpConversation Alice => _alice.Conversation;
@@ -18,16 +18,10 @@ namespace KcpSharp.Benchmarks
 
         public PerfectKcpConversationPipe(IKcpBufferPool bufferPool, int mtu, int capacity, KcpConversationOptions? options)
         {
-            var channelOptions = new BoundedChannelOptions(capacity)
-            {
-                FullMode = BoundedChannelFullMode.DropWrite,
-                SingleWriter = true,
-                SingleReader = true,
-            };
-            _aliceToBobChannel = Channel.CreateBounded<(KcpRentedBuffer Owner, int Length)>(channelOptions);
-            _bobToAliceChannel = Channel.CreateBounded<(KcpRentedBuffer Owner, int Length)>(channelOptions);
-            _alice = new PerfectOneWayConnection(bufferPool, mtu, _aliceToBobChannel.Writer, options);
-            _bob = new PerfectOneWayConnection(bufferPool, mtu, _bobToAliceChannel.Writer, options);
+            _aliceToBobChannel = new PreallocatedQueue<(KcpRentedBuffer Owner, int Length)>(capacity);
+            _bobToAliceChannel = new PreallocatedQueue<(KcpRentedBuffer Owner, int Length)>(capacity);
+            _alice = new PerfectOneWayConnection(bufferPool, mtu, _aliceToBobChannel, options);
+            _bob = new PerfectOneWayConnection(bufferPool, mtu, _bobToAliceChannel, options);
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => PipeFromAliceToBob(_cts.Token));
             _ = Task.Run(() => PipeFromBobToAlice(_cts.Token));
@@ -37,7 +31,7 @@ namespace KcpSharp.Benchmarks
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                (KcpRentedBuffer owner, int length) = await _aliceToBobChannel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                (KcpRentedBuffer owner, int length) = await _aliceToBobChannel.ReadAsync(cancellationToken).ConfigureAwait(false);
                 await _bob.PutPacketAsync(owner.Memory.Slice(0, length), cancellationToken).ConfigureAwait(false);
                 owner.Dispose();
             }
@@ -47,7 +41,7 @@ namespace KcpSharp.Benchmarks
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                (KcpRentedBuffer owner, int length) = await _bobToAliceChannel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                (KcpRentedBuffer owner, int length) = await _bobToAliceChannel.ReadAsync(cancellationToken).ConfigureAwait(false);
                 await _alice.PutPacketAsync(owner.Memory.Slice(0, length), cancellationToken).ConfigureAwait(false);
                 owner.Dispose();
             }
@@ -65,14 +59,14 @@ namespace KcpSharp.Benchmarks
     {
         private readonly IKcpBufferPool _bufferPool;
         private readonly int _mtu;
-        private readonly ChannelWriter<(KcpRentedBuffer Owner, int Length)> _output;
+        private readonly PreallocatedQueue<(KcpRentedBuffer Owner, int Length)> _channel;
         private readonly KcpConversation _conversation;
 
-        public PerfectOneWayConnection(IKcpBufferPool bufferPool, int mtu, ChannelWriter<(KcpRentedBuffer Owner, int Length)> output, KcpConversationOptions? options = null)
+        public PerfectOneWayConnection(IKcpBufferPool bufferPool, int mtu, PreallocatedQueue<(KcpRentedBuffer Owner, int Length)> channel, KcpConversationOptions? options = null)
         {
             _bufferPool = bufferPool;
             _mtu = mtu;
-            _output = output;
+            _channel = channel;
             _conversation = new KcpConversation(this, options);
         }
 
@@ -84,20 +78,20 @@ namespace KcpSharp.Benchmarks
             _conversation.Dispose();
         }
 
-        ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
+        [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+        async ValueTask IKcpTransport.SendPacketAsync(Memory<byte> packet, CancellationToken cancellationToken)
         {
-            int mtu = _mtu;
-            if (packet.Length > mtu)
+            await Task.Yield(); // The purpose is to simulate async writing so that we can validate our customized async method builder works.
+            if (packet.Length > _mtu)
             {
-                return default;
+                return;
             }
-            KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(mtu, false));
+            KcpRentedBuffer owner = _bufferPool.Rent(new KcpBufferPoolRentOptions(_mtu, false));
             packet.CopyTo(owner.Memory);
-            if (!_output.TryWrite((owner, packet.Length)))
+            if (!_channel.TryWrite((owner, packet.Length)))
             {
                 owner.Dispose();
             }
-            return default;
         }
 
         public ValueTask PutPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)

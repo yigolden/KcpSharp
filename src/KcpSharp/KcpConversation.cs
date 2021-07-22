@@ -17,7 +17,7 @@ namespace KcpSharp
     /// <summary>
     /// A reliable channel over an unreliable transport implemented in KCP protocol.
     /// </summary>
-    public sealed class KcpConversation : IKcpConversation, IKcpExceptionProducer<KcpConversation>
+    public sealed partial class KcpConversation : IKcpConversation, IKcpExceptionProducer<KcpConversation>
     {
         private readonly IKcpBufferPool _bufferPool;
         private readonly IKcpTransport _transport;
@@ -353,7 +353,22 @@ namespace KcpSharp
             return Math.Min(minimal, (int)_interval);
         }
 
-        private async Task FlushCoreAsync(CancellationToken cancellationToken)
+
+#if !NET6_0_OR_GREATER
+        private ValueTask FlushCoreAsync(CancellationToken cancellationToken)
+            => new ValueTask(FlushCore2Async(cancellationToken));
+
+        private async Task FlushCore2Async(CancellationToken cancellationToken)
+#else
+        private ValueTask FlushCoreAsync(CancellationToken cancellationToken)
+        {
+            s_currentObject = this;
+            return FlushCore2Async(cancellationToken);
+        }
+
+        [AsyncMethodBuilder(typeof(KcpFlushAsyncMethodBuilder))]
+        private async ValueTask FlushCore2Async(CancellationToken cancellationToken)
+#endif
         {
             int preBufferSize = _preBufferSize;
             int postBufferSize = _postBufferSize;
@@ -758,7 +773,7 @@ namespace KcpSharp
                 {
                     _ts_flush = current + _interval;
                 }
-                return new ValueTask(FlushCoreAsync(cancellationToken));
+                return FlushCoreAsync(cancellationToken);
             }
             return default;
         }
