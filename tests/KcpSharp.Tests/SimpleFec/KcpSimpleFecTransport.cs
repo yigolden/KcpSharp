@@ -5,7 +5,6 @@
         private const int CommandType = 85;
 
         private readonly IKcpTransport _transport;
-        private readonly bool _hasConversationId;
         private readonly KcpConversation _conversation;
 
         private readonly int _mtu;
@@ -21,7 +20,6 @@
         public KcpSimpleFecTransport(IKcpTransport transport, int? conversationId, KcpConversationOptions? options, int rank)
         {
             _transport = transport;
-            _hasConversationId = conversationId.HasValue;
             _conversation = conversationId.HasValue ? new KcpConversation(this, conversationId.GetValueOrDefault(), options) : new KcpConversation(this, options);
 
             _mtu = options?.Mtu ?? 1400;
@@ -76,6 +74,7 @@
             {
                 return default;
             }
+
 
             // TODO process
             return default;

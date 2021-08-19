@@ -85,7 +85,7 @@ namespace KcpSharp.Tests.SimpleFec
 
             // update error correction
             Memory<byte> ecPacket = _buffer.Memory.Slice(0, _mtu);
-            Xor(ecPacket.Span.Slice(_preBufferSize, ecPacket.Length - _postBufferSize), contentSpan);
+            KcpSimpleFecHelper.Xor(ecPacket.Span.Slice(_preBufferSize, ecPacket.Length - _postBufferSize), contentSpan);
 
             _groupBitmap = _groupBitmap | bitMask;
             if ((~_groupBitmap) == 0)
@@ -155,48 +155,6 @@ namespace KcpSharp.Tests.SimpleFec
             _buffer.Memory.Span.Clear();
             _groupBitmap = 0;
         }
-
-        private static void Xor(Span<byte> buffer, ReadOnlySpan<byte> data)
-        {
-            // slow
-            int count = Math.Min(buffer.Length, data.Length);
-
-            if (Vector.IsHardwareAccelerated)
-            {
-                int vectorSize = Vector<byte>.Count;
-                while (count > vectorSize)
-                {
-                    var v1 = new Vector<byte>(buffer);
-                    var v2 = new Vector<byte>(data);
-                    v1 = Vector.Xor(v1, v2);
-                    v1.CopyTo(buffer);
-
-                    count -= vectorSize;
-                    buffer = buffer.Slice(vectorSize);
-                    data = data.Slice(vectorSize);
-                }
-            }
-            else
-            {
-                while (count > 8)
-                {
-                    long v1 = MemoryMarshal.Read<long>(buffer);
-                    long v2 = MemoryMarshal.Read<long>(data);
-                    v1 = v1 ^ v2;
-                    MemoryMarshal.Write(buffer, ref v1);
-
-                    count -= 8;
-                    buffer = buffer.Slice(8);
-                    data = data.Slice(8);
-                }
-            }
-
-            for (int i = 0; i < count; i++)
-            {
-                buffer[i] = (byte)(buffer[i] ^ data[i]);
-            }
-        }
-
 
         public void Dispose()
         {
