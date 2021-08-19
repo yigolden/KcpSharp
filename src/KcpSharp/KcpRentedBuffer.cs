@@ -21,6 +21,11 @@ namespace KcpSharp
         /// </summary>
         public Memory<byte> Memory => _memory;
 
+        /// <summary>
+        /// The rented buffer.
+        /// </summary>
+        public Span<byte> Span => _memory.Span;
+
         internal KcpRentedBuffer(object? owner, Memory<byte> buffer)
         {
             _owner = owner;
