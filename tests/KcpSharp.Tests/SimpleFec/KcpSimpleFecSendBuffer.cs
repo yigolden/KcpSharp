@@ -152,7 +152,7 @@ namespace KcpSharp.Tests.SimpleFec
         private void ResetGroup(ushort groupNumber)
         {
             _currentGroup = groupNumber;
-            _buffer.Memory.Span.Clear();
+            _buffer.Span.Clear();
             _groupBitmap = 0;
         }
 

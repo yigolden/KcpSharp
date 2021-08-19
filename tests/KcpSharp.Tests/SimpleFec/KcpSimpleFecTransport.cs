@@ -12,6 +12,7 @@
         private readonly int _postBufferSize;
 
         private KcpSimpleFecSendBuffer _sendBuffer;
+        private KcpSimpleFecReceiveBuffer _receiveBuffer;
 
         private Func<Exception, IKcpTransport<KcpConversation>, object?, bool>? _exceptionHandler;
         private object? _exceptionHandlerState;
@@ -27,6 +28,7 @@
             _postBufferSize = options?.PostBufferSize ?? 0;
 
             _sendBuffer = new KcpSimpleFecSendBuffer(transport, rank, conversationId, _mtu, _preBufferSize, _postBufferSize, options?.BufferPool ?? DefaultArrayPoolBufferPool.Default);
+            _receiveBuffer = new KcpSimpleFecReceiveBuffer(_conversation, rank, conversationId, _mtu - _preBufferSize - _postBufferSize, options?.ReceiveWindow ?? 128, options?.BufferPool ?? DefaultArrayPoolBufferPool.Default);
         }
 
         public KcpConversation Connection => _conversation;
@@ -65,6 +67,12 @@
                 return default;
             }
 
+            if (packet.Length >= (_preBufferSize + _postBufferSize))
+            {
+                Span<byte> packetSpan = packet.Span;
+                _receiveBuffer.NotifyPacketSent(packetSpan.Slice(_preBufferSize, packetSpan.Length - _postBufferSize));
+            }
+
             return _sendBuffer.SendPacketAsync(packet, cancellationToken);
         }
 
@@ -75,9 +83,7 @@
                 return default;
             }
 
-
-            // TODO process
-            return default;
+            return _receiveBuffer.InputPakcetAsync(packet, cancellationToken);
         }
     }
 }

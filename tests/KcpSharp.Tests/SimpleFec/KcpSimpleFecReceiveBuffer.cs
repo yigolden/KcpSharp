@@ -1,4 +1,5 @@
 ﻿using System.Buffers.Binary;
+using System.Numerics;
 
 namespace KcpSharp.Tests.SimpleFec
 {
@@ -79,7 +80,7 @@ namespace KcpSharp.Tests.SimpleFec
                 }
 
                 uint groupSerial = serialNumber & _mask;
-                if (!group.InputDataPacket(_bufferPool, _packetSize, packet.Span, groupSerial))
+                if (!group.InputDataPacket(_bufferPool, _packetSize, packet.Span, serialNumber, groupSerial))
                 {
                     // maybe we can drop this packet?
                     return _conversation.InputPakcetAsync(packet, cancellationToken);
@@ -128,7 +129,7 @@ namespace KcpSharp.Tests.SimpleFec
                     group.SetFullyReceived();
                     if (group.ErrorCorrectionRecived)
                     {
-                        return new ValueTask(ReceiveWithErrorCorrection(packet, group, cancellationToken));
+                        return new ValueTask(ReceiveWithErrorCorrection(group, cancellationToken));
                     }
                 }
             }
@@ -136,11 +137,47 @@ namespace KcpSharp.Tests.SimpleFec
             return _conversation.InputPakcetAsync(packet, cancellationToken);
         }
 
+        public void NotifyPacketSent(ReadOnlySpan<byte> packet)
+        {
+            uint unacknowledged;
+            if (_conversationId.HasValue)
+            {
+                if (packet.Length < 24)
+                {
+                    return;
+                }
+                unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(16));
+            }
+            else
+            {
+                if (packet.Length < 20)
+                {
+                    return;
+                }
+                unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(12));
+            }
+
+            // TODO process una
+        }
+
+        private async Task ReceiveWithErrorCorrection(ErrorCorrectionGroup group, CancellationToken cancellationToken)
+        {
+            ReadOnlyMemory<byte> packet = group.PrepareForReceiving(_packetSize, _mask, _conversationId);
+            try
+            {
+                await _conversation.InputPakcetAsync(packet, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                group.CompleteReceiving();
+            }
+        }
+
         private async Task ReceiveWithErrorCorrection(ReadOnlyMemory<byte> packet, ErrorCorrectionGroup group, CancellationToken cancellationToken)
         {
             await _conversation.InputPakcetAsync(packet, cancellationToken).ConfigureAwait(false);
 
-            packet = group.PrepareForReceiving(_packetSize, _rank, _conversationId);
+            packet = group.PrepareForReceiving(_packetSize, _mask, _conversationId);
             try
             {
                 await _conversation.InputPakcetAsync(packet, cancellationToken).ConfigureAwait(false);
@@ -156,7 +193,7 @@ namespace KcpSharp.Tests.SimpleFec
 
         }
 
-        class ErrorCorrectionGroup
+        sealed class ErrorCorrectionGroup 
         {
             private ushort _groupNumber;
             private KcpRentedBuffer _buffer;
@@ -165,6 +202,7 @@ namespace KcpSharp.Tests.SimpleFec
             private bool _isFullyReceived;
             private uint _bitmap;
             private int _count;
+            private uint _lastSerialNumber;
 
             public ushort GroupNumber => _groupNumber;
 
@@ -190,6 +228,7 @@ namespace KcpSharp.Tests.SimpleFec
                 _isFullyReceived = false;
                 _bitmap = 0;
                 _count = 0;
+                _lastSerialNumber = 0;
             }
 
             public void SetFullyReceived()
@@ -197,7 +236,7 @@ namespace KcpSharp.Tests.SimpleFec
                 _isFullyReceived = true;
             }
 
-            public bool InputDataPacket(IKcpBufferPool bufferPool, int packetSize, ReadOnlySpan<byte> packet, uint groupSerial)
+            public bool InputDataPacket(IKcpBufferPool bufferPool, int packetSize, ReadOnlySpan<byte> packet, uint serialNumber, uint groupSerial)
             {
                 if (_isFullyReceived)
                 {
@@ -212,13 +251,14 @@ namespace KcpSharp.Tests.SimpleFec
                 if (!_allocated)
                 {
                     _buffer = bufferPool.Rent(new KcpBufferPoolRentOptions(packetSize, false));
-                    _buffer.Memory.Span.Clear();
+                    _buffer.Span.Clear();
                     _allocated = true;
                 }
-                KcpSimpleFecHelper.Xor(_buffer.Memory.Span.Slice(0, packetSize), packet);
+                KcpSimpleFecHelper.Xor(_buffer.Span.Slice(0, packetSize), packet);
 
                 _bitmap = _bitmap | bitMask;
                 _count++;
+                _lastSerialNumber = serialNumber;
                 return true;
             }
 
@@ -238,11 +278,11 @@ namespace KcpSharp.Tests.SimpleFec
                 if (!_allocated)
                 {
                     _buffer = bufferPool.Rent(new KcpBufferPoolRentOptions(packetSize, false));
-                    _buffer.Memory.Span.Clear();
+                    _buffer.Span.Clear();
                     _allocated = true;
                 }
 
-                Span<byte> bufferSpan = _buffer.Memory.Span;
+                Span<byte> bufferSpan = _buffer.Span;
 
                 KcpSimpleFecHelper.Xor(bufferSpan.Slice(0, packetSize), packet);
                 _count++;
@@ -256,11 +296,34 @@ namespace KcpSharp.Tests.SimpleFec
                 return true;
             }
 
-            public ReadOnlyMemory<byte> PrepareForReceiving(int packetSize, int rank, int? conversationId)
+            public ReadOnlyMemory<byte> PrepareForReceiving(int packetSize, uint mask, int? conversationId)
             {
-                Span<byte> bufferSpan = _buffer.Memory.Span;
+                Memory<byte> buffer = _buffer.Memory.Slice(0, packetSize);
+                Span<byte> contentSpan = buffer.Span;
+                int headerOverhead;
+                if (conversationId.HasValue)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(contentSpan, conversationId.GetValueOrDefault());
+                    contentSpan = contentSpan.Slice(4);
+                    headerOverhead = 24;
+                }
+                else
+                {
+                    headerOverhead = 20;
+                }
 
-                return default;
+                contentSpan[0] = 81;
+
+                uint groupSerial = (uint)BitOperations.TrailingZeroCount(~_bitmap) - 1;
+                BinaryPrimitives.WriteUInt32LittleEndian(contentSpan.Slice(8), (_lastSerialNumber & (~mask)) | groupSerial);
+
+                uint length = BinaryPrimitives.ReadUInt32LittleEndian(contentSpan.Slice(16));
+                if (length > (contentSpan.Length - 20))
+                {
+                    return default;
+                }
+
+                return buffer.Slice(0, headerOverhead + (int)length);
             }
 
             public void CompleteReceiving()
