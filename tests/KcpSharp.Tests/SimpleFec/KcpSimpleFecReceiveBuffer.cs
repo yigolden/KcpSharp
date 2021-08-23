@@ -1,4 +1,5 @@
 ﻿using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Numerics;
 
 namespace KcpSharp.Tests.SimpleFec
@@ -65,34 +66,48 @@ namespace KcpSharp.Tests.SimpleFec
                 uint serialNumber = BinaryPrimitives.ReadUInt16LittleEndian(contentSpan.Slice(8));
                 ushort groupNumber = (ushort)(serialNumber >> _rank);
 
-                int groupOffset = groupNumber - _baseGroupNumber;
-                if (groupOffset < 0)
+                ErrorCorrectionGroup? group;
+                lock (_groups)
                 {
-                    // maybe we can drop this packet?
-                    return _conversation.InputPakcetAsync(packet, cancellationToken);
-                }
-
-                int index = (_baseIndex + groupOffset) % _groups.Length;
-                ErrorCorrectionGroup? group = _groups[index];
-                if (group.GroupNumber != groupNumber)
-                {
-                    return _conversation.InputPakcetAsync(packet, cancellationToken);
-                }
-
-                uint groupSerial = serialNumber & _mask;
-                if (!group.InputDataPacket(_bufferPool, _packetSize, packet.Span, serialNumber, groupSerial))
-                {
-                    // maybe we can drop this packet?
-                    return _conversation.InputPakcetAsync(packet, cancellationToken);
-                }
-
-                if (group.Count > _mask)
-                {
-                    group.SetFullyReceived();
-                    if (group.ErrorCorrectionRecived)
+                    int groupOffset = groupNumber - _baseGroupNumber;
+                    if (groupOffset < 0)
                     {
-                        return new ValueTask(ReceiveWithErrorCorrection(packet, group, cancellationToken));
+                        // maybe we can drop this packet?
+                        //return _conversation.InputPakcetAsync(packet, cancellationToken);
+                        return default;
                     }
+
+                    int index = (_baseIndex + groupOffset) % _groups.Length;
+                    group = _groups[index];
+                    bool acquired = group.Acquire();
+                    Debug.Assert(acquired);
+                }
+                try
+                {
+                    if (group.GroupNumber != groupNumber)
+                    {
+                        return _conversation.InputPakcetAsync(packet, cancellationToken);
+                    }
+
+                    uint groupSerial = serialNumber & _mask;
+                    if (!group.InputDataPacket(_bufferPool, _packetSize, packet.Span, serialNumber, groupSerial))
+                    {
+                        // maybe we can drop this packet?
+                        return _conversation.InputPakcetAsync(packet, cancellationToken);
+                    }
+
+                    if (group.Count > _mask)
+                    {
+                        group.SetFullyReceived();
+                        if (group.ErrorCorrectionRecived)
+                        {
+                            return new ValueTask(ReceiveWithErrorCorrection(packet, Interlocked.Exchange<ErrorCorrectionGroup?>(ref group, null), cancellationToken));
+                        }
+                    }
+                }
+                finally
+                {
+                    group?.Release();
                 }
             }
 
@@ -106,31 +121,45 @@ namespace KcpSharp.Tests.SimpleFec
                     return default;
                 }
 
-                int groupOffset = groupNumber - _baseGroupNumber;
-                if (groupOffset < 0)
+                ErrorCorrectionGroup? group;
+                lock (_groups)
                 {
-                    return default;
-                }
-
-                int index = (_baseIndex + groupOffset) % _groups.Length;
-                ErrorCorrectionGroup? group = _groups[index];
-                if (group.GroupNumber != groupNumber)
-                {
-                    return default;
-                }
-
-                if (!group.InputErrorCorrectionPacket(_bufferPool, _packetSize, packet.Span, _conversationId.HasValue))
-                {
-                    return default;
-                }
-
-                if (group.Count > _mask)
-                {
-                    group.SetFullyReceived();
-                    if (group.ErrorCorrectionRecived)
+                    int groupOffset = groupNumber - _baseGroupNumber;
+                    if (groupOffset < 0)
                     {
-                        return new ValueTask(ReceiveWithErrorCorrection(group, cancellationToken));
+                        return default;
                     }
+
+                    int index = (_baseIndex + groupOffset) % _groups.Length;
+
+                    group = _groups[index];
+                    bool acquired = group.Acquire();
+                    Debug.Assert(acquired);
+                }
+                try
+                {
+                    if (group.GroupNumber != groupNumber)
+                    {
+                        return default;
+                    }
+
+                    if (!group.InputErrorCorrectionPacket(_bufferPool, _packetSize, packet.Span, _conversationId.HasValue))
+                    {
+                        return default;
+                    }
+
+                    if (group.Count > _mask)
+                    {
+                        group.SetFullyReceived();
+                        if (group.ErrorCorrectionRecived)
+                        {
+                            return new ValueTask(ReceiveWithErrorCorrection(Interlocked.Exchange<ErrorCorrectionGroup?>(ref group, null), cancellationToken));
+                        }
+                    }
+                }
+                finally
+                {
+                    group?.Release();
                 }
             }
 
@@ -157,7 +186,45 @@ namespace KcpSharp.Tests.SimpleFec
                 unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(12));
             }
 
-            // TODO process una
+            ushort groupNumber = (ushort)(unacknowledged >> _rank);
+
+            int groupOffset = groupNumber - _baseGroupNumber;
+            if (groupOffset <= 0)
+            {
+                return;
+            }
+
+            lock (_groups)
+            {
+                _baseGroupNumber = groupNumber;
+
+                if (groupOffset >= _groups.Length)
+                {
+                    _baseIndex = 0;
+                    for (int i = 0; i < _groups.Length; i++)
+                    {
+                        if (!_groups[i].TryReset(groupNumber))
+                        {
+                            _groups[i] = new ErrorCorrectionGroup(groupNumber);
+                        }
+                        groupNumber++;
+                    }
+                    return;
+                }
+
+                for (int i = 0; i < groupOffset; i++)
+                {
+                    int index = (_baseIndex + i) % _groups.Length;
+
+                    if (!_groups[index].TryReset(groupNumber))
+                    {
+                        _groups[index] = new ErrorCorrectionGroup(groupNumber);
+                    }
+                    groupNumber++;
+                }
+
+                _baseIndex = (_baseIndex + groupOffset) % _groups.Length;
+            }
         }
 
         private async Task ReceiveWithErrorCorrection(ErrorCorrectionGroup group, CancellationToken cancellationToken)
@@ -169,7 +236,7 @@ namespace KcpSharp.Tests.SimpleFec
             }
             finally
             {
-                group.CompleteReceiving();
+                group.Release();
             }
         }
 
@@ -184,17 +251,24 @@ namespace KcpSharp.Tests.SimpleFec
             }
             finally
             {
-                group.CompleteReceiving();
+                group.Release();
             }
         }
 
         public void Dispose()
         {
-
+            lock (_groups)
+            {
+                for (int i = 0; i < _groups.Length; i++)
+                {
+                    _groups[i].TryReset(0);
+                }
+            }
         }
 
-        sealed class ErrorCorrectionGroup 
+        sealed class ErrorCorrectionGroup
         {
+            private int _state; // 0-idle 1-buffer in use 2-resetting
             private ushort _groupNumber;
             private KcpRentedBuffer _buffer;
             private bool _allocated;
@@ -205,9 +279,7 @@ namespace KcpSharp.Tests.SimpleFec
             private uint _lastSerialNumber;
 
             public ushort GroupNumber => _groupNumber;
-
             public int Count => _count;
-
             public bool ErrorCorrectionRecived => _errorCorrectionRecived;
 
             public ErrorCorrectionGroup(ushort groupNumber)
@@ -215,8 +287,15 @@ namespace KcpSharp.Tests.SimpleFec
                 _groupNumber = groupNumber;
             }
 
-            public void Reset(ushort groupNumber)
+            public bool TryReset(ushort groupNumber)
             {
+                int state = Interlocked.Exchange(ref _state, 2);
+                if (state != 0)
+                {
+                    return false;
+                }
+
+                // reset state
                 _groupNumber = groupNumber;
                 if (_allocated)
                 {
@@ -229,6 +308,28 @@ namespace KcpSharp.Tests.SimpleFec
                 _bitmap = 0;
                 _count = 0;
                 _lastSerialNumber = 0;
+
+                Volatile.Write(ref _state, 0);
+                return true;
+            }
+
+            public bool Acquire()
+            {
+                return Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+            }
+
+            public void Release()
+            {
+                if (Interlocked.CompareExchange(ref _state, 0, 1) == 2)
+                {
+                    // release buffer
+                    if (_allocated)
+                    {
+                        _buffer.Dispose();
+                        _buffer = default;
+                        _allocated = false;
+                    }
+                }
             }
 
             public void SetFullyReceived()
@@ -324,17 +425,6 @@ namespace KcpSharp.Tests.SimpleFec
                 }
 
                 return buffer.Slice(0, headerOverhead + (int)length);
-            }
-
-            public void CompleteReceiving()
-            {
-                _isFullyReceived = true;
-                if (_allocated)
-                {
-                    _buffer.Dispose();
-                    _buffer = default;
-                    _allocated = false;
-                }
             }
         }
     }
