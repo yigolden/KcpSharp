@@ -127,7 +127,7 @@ namespace KcpSharp.Tests.SimpleFec
                 Memory<byte> content = ecPacket.Slice(_preBufferSize);
                 content.Span[0] = 85;
 
-                uint sn = ((uint)_rank << 16) + _currentGroup;
+                uint sn = ((_mask + 1) << 16) + _currentGroup;
                 BinaryPrimitives.WriteUInt32LittleEndian(content.Span.Slice(8), sn);
 
                 if (_disposed)

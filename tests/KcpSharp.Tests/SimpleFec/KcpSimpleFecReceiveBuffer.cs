@@ -116,7 +116,7 @@ namespace KcpSharp.Tests.SimpleFec
             {
                 uint serialNumber = BinaryPrimitives.ReadUInt32LittleEndian(contentSpan.Slice(8));
                 ushort groupNumber = (ushort)(serialNumber);
-                if ((serialNumber >> 16) != (uint)_rank)
+                if ((serialNumber >> 16) != _mask + 1)
                 {
                     return default;
                 }
