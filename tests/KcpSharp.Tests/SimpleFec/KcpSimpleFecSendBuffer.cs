@@ -88,7 +88,7 @@ namespace KcpSharp.Tests.SimpleFec
             KcpSimpleFecHelper.Xor(ecPacket.Span.Slice(_preBufferSize, ecPacket.Length - _postBufferSize), contentSpan);
 
             _groupBitmap = _groupBitmap | bitMask;
-            if ((~_groupBitmap) == 0)
+            if (_groupBitmap == ((_mask << 1) | 1))
             {
                 // every packet in this group have been sent
                 // send error correction packet.

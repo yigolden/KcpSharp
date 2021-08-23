@@ -114,7 +114,7 @@ namespace KcpSharp.Tests.SimpleFec
             // error-correction packet
             if (commandType == 85)
             {
-                uint serialNumber = BinaryPrimitives.ReadUInt16LittleEndian(contentSpan.Slice(8));
+                uint serialNumber = BinaryPrimitives.ReadUInt32LittleEndian(contentSpan.Slice(8));
                 ushort groupNumber = (ushort)(serialNumber);
                 if ((serialNumber >> 16) != (uint)_rank)
                 {
@@ -415,7 +415,7 @@ namespace KcpSharp.Tests.SimpleFec
 
                 contentSpan[0] = 81;
 
-                uint groupSerial = (uint)BitOperations.TrailingZeroCount(~_bitmap) - 1;
+                uint groupSerial = (uint)BitOperations.TrailingZeroCount(~_bitmap);
                 BinaryPrimitives.WriteUInt32LittleEndian(contentSpan.Slice(8), (_lastSerialNumber & (~mask)) | groupSerial);
 
                 uint length = BinaryPrimitives.ReadUInt32LittleEndian(contentSpan.Slice(16));
