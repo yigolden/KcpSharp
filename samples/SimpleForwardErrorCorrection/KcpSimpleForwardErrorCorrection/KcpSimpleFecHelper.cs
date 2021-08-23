@@ -1,7 +1,7 @@
 ﻿using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace KcpSharp.Tests.SimpleFec
+namespace KcpSimpleForwardErrorCorrection
 {
     internal static class KcpSimpleFecHelper
     {
