@@ -177,7 +177,7 @@ namespace KcpSharp.Tests
                 Random.Shared.NextBytes(packet);
             }
 
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(30), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(60), async cancellationToken =>
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(new KcpConversationOptions { SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30 });
 
