@@ -23,7 +23,7 @@ namespace KcpSharp.Tests
                 Random.Shared.NextBytes(packet);
             }
 
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(20), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(40), async cancellationToken =>
             {
                 using KcpRawDuplexChannel pipe = KcpRawDuplexChannelFactory.CreateDuplexChannel(new KcpRawChannelOptions { ReceiveQueueSize = packetCount });
 
