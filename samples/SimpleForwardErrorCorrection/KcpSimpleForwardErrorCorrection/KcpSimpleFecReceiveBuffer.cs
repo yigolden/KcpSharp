@@ -167,25 +167,13 @@ namespace KcpSimpleForwardErrorCorrection
             return _conversation.InputPakcetAsync(packet, cancellationToken);
         }
 
-        public void NotifyPacketSent(ReadOnlySpan<byte> packet)
+        public void NotifyPacketSent(ReadOnlySpan<byte> contentSpan)
         {
-            uint unacknowledged;
-            if (_conversationId.HasValue)
+            if (contentSpan.Length < 20)
             {
-                if (packet.Length < 24)
-                {
-                    return;
-                }
-                unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(16));
+                return;
             }
-            else
-            {
-                if (packet.Length < 20)
-                {
-                    return;
-                }
-                unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(packet.Slice(12));
-            }
+            uint unacknowledged = BinaryPrimitives.ReadUInt32LittleEndian(contentSpan.Slice(12));
 
             ushort groupNumber = (ushort)(unacknowledged >> _rank);
 

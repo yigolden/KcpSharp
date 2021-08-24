@@ -1,4 +1,5 @@
 ﻿using System.Buffers.Binary;
+using System.Numerics;
 using KcpSharp;
 
 namespace KcpSimpleForwardErrorCorrection
@@ -46,7 +47,13 @@ namespace KcpSimpleForwardErrorCorrection
                 return default;
             }
 
-            Span<byte> contentSpan = packet.Span.Slice(_preBufferSize, packet.Length - _preBufferSize - _postBufferSize);
+            int prePacketSize = _preBufferSize;
+            if (_conversationId.HasValue)
+            {
+                prePacketSize += 4;
+            }
+
+            Span<byte> contentSpan = packet.Span.Slice(prePacketSize, packet.Length - prePacketSize - _postBufferSize);
             if (contentSpan[0] != 81) // push
             {
                 return _transport.SendPacketAsync(packet, cancellationToken);
@@ -84,10 +91,10 @@ namespace KcpSimpleForwardErrorCorrection
 
             // update error correction
             Memory<byte> ecPacket = _buffer.Memory.Slice(0, _mtu);
-            KcpSimpleFecHelper.Xor(ecPacket.Span.Slice(_preBufferSize, ecPacket.Length - _postBufferSize), contentSpan);
+            KcpSimpleFecHelper.Xor(ecPacket.Span.Slice(prePacketSize, _mtu - prePacketSize - _postBufferSize), contentSpan);
 
             _groupBitmap = _groupBitmap | bitMask;
-            if (_groupBitmap == ((_mask << 1) | 1))
+            if (_groupBitmap == (uint)((1ul << (1 << _rank)) - 1))
             {
                 // every packet in this group have been sent
                 // send error correction packet.
@@ -118,12 +125,14 @@ namespace KcpSimpleForwardErrorCorrection
 
                 await _transport.SendPacketAsync(packet, cancellationToken).ConfigureAwait(false);
 
+                int prePacketSize = _preBufferSize;
                 if (_conversationId.HasValue)
                 {
-                    BinaryPrimitives.WriteInt32LittleEndian(ecPacket.Span.Slice(_preBufferSize - 4), _conversationId.GetValueOrDefault());
+                    BinaryPrimitives.WriteInt32LittleEndian(ecPacket.Span.Slice(prePacketSize), _conversationId.GetValueOrDefault());
+                    prePacketSize += 4;
                 }
 
-                Memory<byte> content = ecPacket.Slice(_preBufferSize);
+                Memory<byte> content = ecPacket.Slice(prePacketSize);
                 content.Span[0] = 85;
 
                 uint sn = ((_mask + 1) << 16) + _currentGroup;
