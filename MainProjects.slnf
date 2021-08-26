@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "KcpSharp.sln",
+    "projects": [
+      "src\\KcpSharp\\KcpSharp.csproj",
+      "tests\\KcpSharp.Benchmarks\\KcpSharp.Benchmarks.csproj",
+      "tests\\KcpSharp.Tests\\KcpSharp.Tests.csproj",
+      "tests\\KcpSharp.ThroughputBanchmarks\\KcpSharp.ThroughputBanchmarks.csproj"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "..\\KcpSharp.sln",
+    "projects": [
+      "samples\\KcpChatWasm\\KcpChatWasm.csproj",
+      "samples\\KcpEcho\\KcpEcho.csproj",
+      "samples\\KcpTunnel\\KcpTunnel.csproj",
+      "src\\KcpSharp\\KcpSharp.csproj"
+    ]
+  }
+}
