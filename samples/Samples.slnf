@@ -5,6 +5,9 @@
       "samples\\KcpChatWasm\\KcpChatWasm.csproj",
       "samples\\KcpEcho\\KcpEcho.csproj",
       "samples\\KcpTunnel\\KcpTunnel.csproj",
+      "samples\\SimpleForwardErrorCorrection\\KcpSimpleForwardErrorCorrection.Benchmarks\\KcpSimpleForwardErrorCorrection.Benchmarks.csproj",
+      "samples\\SimpleForwardErrorCorrection\\KcpSimpleForwardErrorCorrection.Tests\\KcpSimpleForwardErrorCorrection.Tests.csproj",
+      "samples\\SimpleForwardErrorCorrection\\KcpSimpleForwardErrorCorrection\\KcpSimpleForwardErrorCorrection.csproj",
       "src\\KcpSharp\\KcpSharp.csproj"
     ]
   }
