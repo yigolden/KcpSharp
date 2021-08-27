@@ -10,6 +10,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     public class KcpNetworkConnectionOptions
     {
         public IKcpBufferPool? BufferPool { get; set; }
-        public int Mtu { get; set; }
+        internal KcpNetworkConnectionNegotiationOperationPool? NegotiationOperationPool { get; set; }
+        public int Mtu { get; set; } = 1400;
+        public int SendQueueSize { get; set; } = 1024;
     }
 }

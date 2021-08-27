@@ -2,7 +2,7 @@
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
-    public readonly struct KcpConnectionAuthenticationResult : IEquatable<KcpConnectionAuthenticationResult>
+    public readonly struct KcpConnectionNegotiationResult : IEquatable<KcpConnectionNegotiationResult>
     {
         // failed, continue, success
         private readonly int _bytesWritten;
@@ -14,27 +14,27 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         public bool IsContinuationRequired => _state == 1;
         public bool IsSucceeded => _state == 2;
 
-        public KcpConnectionAuthenticationResult(int bytesWritten)
+        public KcpConnectionNegotiationResult(int bytesWritten)
         {
             _bytesWritten = bytesWritten;
             _state = 1;
         }
 
-        private KcpConnectionAuthenticationResult(byte state, int bytesWritten)
+        private KcpConnectionNegotiationResult(byte state, int bytesWritten)
         {
             _bytesWritten = bytesWritten;
             _state = state;
         }
 
-        public static KcpConnectionAuthenticationResult Failed => new KcpConnectionAuthenticationResult(0, 0);
-        public static KcpConnectionAuthenticationResult ContinuationRequired => new KcpConnectionAuthenticationResult(1, 0);
-        public static KcpConnectionAuthenticationResult Succeeded => new KcpConnectionAuthenticationResult(2, 0);
+        public static KcpConnectionNegotiationResult Failed => new KcpConnectionNegotiationResult(0, 0);
+        public static KcpConnectionNegotiationResult ContinuationRequired => new KcpConnectionNegotiationResult(1, 0);
+        public static KcpConnectionNegotiationResult Succeeded => new KcpConnectionNegotiationResult(2, 0);
 
-        public bool Equals(KcpConnectionAuthenticationResult other)
+        public bool Equals(KcpConnectionNegotiationResult other)
             => other._bytesWritten == _bytesWritten && other._state == _state;
 
         public override bool Equals([NotNullWhen(true)] object? obj)
-            => obj is KcpConnectionAuthenticationResult other && Equals(other);
+            => obj is KcpConnectionNegotiationResult other && Equals(other);
 
         public override int GetHashCode() => HashCode.Combine(_bytesWritten, _state);
     }

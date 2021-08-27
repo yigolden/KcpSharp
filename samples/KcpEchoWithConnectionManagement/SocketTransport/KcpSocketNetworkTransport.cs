@@ -7,10 +7,12 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
 {
     public sealed class KcpSocketNetworkTransport : IKcpNetworkTransport, IDisposable
     {
-        private Socket? _socket;
-        private CancellationTokenSource? _cts;
         private readonly int _mtu;
         private readonly IKcpBufferPool _bufferPool;
+
+        private Socket? _socket;
+        private CancellationTokenSource? _cts;
+        private KcpSocketNetworkSendQueue? _sendQueue;
 
         public KcpSocketNetworkTransport(int mtu, IKcpBufferPool? bufferPool)
         {
@@ -44,12 +46,13 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             return _socket.ConnectAsync(remoteEndPoint, cancellationToken);
         }
 
-        public void Start(IKcpNetworkApplication networkConnection, EndPoint remoteEndPoint)
+        public void Start(IKcpNetworkApplication networkConnection, EndPoint remoteEndPoint, int sendQueueCapacity)
         {
-            if (_cts is not null)
+            if (_cts is not null || _socket is null)
             {
                 ThrowInvalidOperationException();
             }
+            _sendQueue = new KcpSocketNetworkSendQueue(_bufferPool, _socket, sendQueueCapacity);
             _cts = new CancellationTokenSource();
             _ = Task.Run(() => ReceiveLoop(networkConnection, remoteEndPoint, _cts.Token));
         }
@@ -81,14 +84,24 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             // TODO handle other exceptions
         }
 
-        ValueTask IKcpNetworkTransport.SendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
+        bool IKcpNetworkTransport.QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
         {
-            Socket? socket = _socket;
-            if (socket is null)
+            KcpSocketNetworkSendQueue? sendQueue = _sendQueue;
+            if (sendQueue is not null)
             {
-                return default;
+                sendQueue.Queue(packet, remoteEndPoint);
             }
-            return new ValueTask(socket.SendToAsync(packet, SocketFlags.None, remoteEndPoint, cancellationToken).AsTask());
+            return false;
+        }
+
+        ValueTask IKcpNetworkTransport.QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
+        {
+            KcpSocketNetworkSendQueue? sendQueue = _sendQueue;
+            if (sendQueue is not null)
+            {
+                return sendQueue.SendAsync(packet, remoteEndPoint, cancellationToken);
+            }
+            return default;
         }
 
         public void Dispose()
@@ -98,6 +111,11 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             {
                 cts.Cancel();
                 cts.Dispose();
+            }
+            var sendQueue = Interlocked.Exchange(ref _sendQueue, null);
+            if (sendQueue is not null)
+            {
+                sendQueue.Dispose();
             }
             Socket? socket = Interlocked.Exchange(ref _socket, null);
             if (socket is not null)
