@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace KcpEchoWithConnectionManagement.NetworkConnection
+﻿namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
     public interface IKcpConnectionNegotiationContext
     {
+        int? NegotiatedMtu { get; }
         bool TryGetSessionId(out uint sessionId);
         void SetSessionId(uint sessionId);
         KcpConnectionNegotiationResult PutNegotiationData(ReadOnlySpan<byte> data);

@@ -112,7 +112,7 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                 cts.Cancel();
                 cts.Dispose();
             }
-            var sendQueue = Interlocked.Exchange(ref _sendQueue, null);
+            KcpSocketNetworkSendQueue? sendQueue = Interlocked.Exchange(ref _sendQueue, null);
             if (sendQueue is not null)
             {
                 sendQueue.Dispose();

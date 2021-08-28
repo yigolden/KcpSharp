@@ -9,10 +9,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return new KcpNetworkConnectionNegotiationOperation(this);
         }
 
-        public virtual KcpNetworkConnectionNegotiationOperation Rent(IKcpBufferPool bufferPool, KcpNetworkConnection networkConnection, IKcpConnectionNegotiationContext negotiationContext)
+        public virtual KcpNetworkConnectionNegotiationOperation Rent(KcpNetworkConnection networkConnection, IKcpConnectionNegotiationContext negotiationContext)
         {
             KcpNetworkConnectionNegotiationOperation operation = Allocate();
-            operation.Initialize(bufferPool, networkConnection, negotiationContext);
+            operation.Initialize(networkConnection, negotiationContext);
             return operation;
         }
 

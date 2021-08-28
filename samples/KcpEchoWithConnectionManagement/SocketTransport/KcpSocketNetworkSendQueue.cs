@@ -401,6 +401,7 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             private void SetCanceled()
             {
                 bool lockTaken = false;
+                bool shouldReturn = false;
                 try
                 {
                     _lock.Enter(ref lockTaken);
@@ -416,7 +417,7 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                         else if (_isDetached)
                         {
                             _isDetached = false;
-                            _queue.ReturnOperation(this);
+                            shouldReturn = true;
                         }
                     }
                 }
@@ -426,6 +427,11 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                     {
                         _lock.Exit();
                     }
+                }
+
+                if (shouldReturn)
+                {
+                    _queue.ReturnOperation(this);
                 }
             }
 

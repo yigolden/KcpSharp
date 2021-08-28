@@ -8,13 +8,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     internal sealed class KcpNetworkConnectionNegotiationOperation : IValueTaskSource<bool>, IThreadPoolWorkItem
     {
         private readonly KcpNetworkConnectionNegotiationOperationPool? _pool;
-        private IKcpBufferPool? _bufferPool;
         private KcpNetworkConnection? _networkConnection;
         private IKcpConnectionNegotiationContext? _negotiationContext;
 
         private ManualResetValueTaskSourceCore<bool> _mrvtsc;
         private bool _isActive;
         private bool _isCanceled;
+        private bool _isDisposed;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
@@ -47,7 +47,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             finally
             {
                 _mrvtsc.Reset();
-                _bufferPool = null;
                 _networkConnection = null;
                 _negotiationContext = null;
                 _pool?.Return(this);
@@ -64,9 +63,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             };
         }
 
-        public void Initialize(IKcpBufferPool bufferPool, KcpNetworkConnection networkConnection, IKcpConnectionNegotiationContext negotiationContext)
+        public void Initialize(KcpNetworkConnection networkConnection, IKcpConnectionNegotiationContext negotiationContext)
         {
-            _bufferPool = bufferPool;
             _networkConnection = networkConnection;
             _negotiationContext = negotiationContext;
         }
@@ -91,6 +89,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
                 _isActive = true;
                 _isCanceled = false;
+                _isDisposed = false;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
 
@@ -127,11 +126,22 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 }
             }
         }
+        public void SetDisposed()
+        {
+            lock (this)
+            {
+                if (_isActive)
+                {
+                    _isDisposed = true;
+                }
+            }
+        }
 
         private void ClearPreviousOperation()
         {
             _isActive = false;
             _isCanceled = false;
+            _isDisposed = false;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
@@ -160,28 +170,37 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public void Execute()
         {
+            if (Interlocked.Exchange(ref _tickOperationActive, 1) != 0)
+            {
+                return;
+            }
             lock (this)
             {
                 if (!_isActive)
                 {
+                    Interlocked.Exchange(ref _tickOperationActive, 0);
                     return;
                 }
-
                 if (_isCanceled)
                 {
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperation();
                     _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
+                    Interlocked.Exchange(ref _tickOperationActive, 0);
+                    return;
                 }
-            }
-
-            if (Interlocked.Exchange(ref _tickOperationActive, 1) != 0)
-            {
-                return;
+                if (_isDisposed)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetResult(false);
+                    Interlocked.Exchange(ref _tickOperationActive, 0);
+                    return;
+                }
             }
             bool? result = null;
             try
             {
+
                 result = UpdateCore();
             }
             catch (Exception)
@@ -198,14 +217,21 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         if (_isActive)
                         {
                             bool isCanceled = _isCanceled;
+                            bool isDisposed = _isDisposed;
                             CancellationToken cancellationToken = _cancellationToken;
                             ClearPreviousOperation();
                             if (isCanceled)
                             {
+                                _networkConnection?.NotifyNegotiationResult(this, false, null);
                                 _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
+                            }
+                            else if (isDisposed)
+                            {
+                                _mrvtsc.SetResult(false);
                             }
                             else
                             {
+                                _networkConnection?.NotifyNegotiationResult(this, result.GetValueOrDefault(), _negotiationContext?.NegotiatedMtu);
                                 _mrvtsc.SetResult(result.GetValueOrDefault());
                             }
                         }
@@ -220,13 +246,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             const int HeaderSize = 12;
 
-            IKcpBufferPool? bufferPool = _bufferPool;
             KcpNetworkConnection? networkConnection = _networkConnection;
             IKcpConnectionNegotiationContext? negotiationContext = _negotiationContext;
-            if (bufferPool is null || networkConnection is null || negotiationContext is null)
+            if (networkConnection is null || negotiationContext is null)
             {
                 return false;
             }
+            IKcpBufferPool? bufferPool = networkConnection.GetAllocator();
 
             lock (_readWriteLock)
             {
@@ -345,21 +371,21 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return 10 * 1000;
         }
 
-        public void InputPacket(ReadOnlySpan<byte> packet)
+        public bool InputPacket(ReadOnlySpan<byte> packet)
         {
             // validate packet
             if (packet.Length < 12)
             {
-                return;
+                return false;
             }
             if (packet[0] != 1 && packet[1] != 0)
             {
-                return;
+                return false;
             }
             ushort payloadLength = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(2));
             if ((packet.Length - 4) < payloadLength)
             {
-                return;
+                return false;
             }
             uint packetSessionId = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(4));
             packet = packet.Slice(8);
@@ -368,14 +394,14 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             byte localSerial = packet[1];
             if (packet[2] != 0)
             {
-                return;
+                return false;
             }
             ushort negotiationLength = packet[3];
 
             packet = packet.Slice(4);
             if (packet.Length < negotiationLength)
             {
-                return;
+                return false;
             }
             packet = packet.Slice(0, negotiationLength);
 
@@ -383,21 +409,27 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 if (!_isActive)
                 {
-                    return;
+                    return false;
                 }
                 if (_isCanceled)
                 {
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperation();
                     _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
-                    return;
+                    return false;
+                }
+                if (_isDisposed)
+                {
+                    ClearPreviousOperation();
+                    _mrvtsc.SetResult(false);
+                    return false;
                 }
             }
 
-            IKcpBufferPool? bufferPool = _bufferPool;
+            IKcpBufferPool? bufferPool = _networkConnection?.GetAllocator();
             if (bufferPool is null)
             {
-                return;
+                return false;
             }
 
             lock (_readWriteLock)
@@ -430,6 +462,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
 
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            return true;
         }
 
         private static uint GetCurrentTicks() => (uint)Environment.TickCount;
