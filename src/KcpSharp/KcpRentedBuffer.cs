@@ -139,6 +139,7 @@ namespace KcpSharp
                 if (MemoryMarshal.TryGetArray(_memory, out ArraySegment<byte> arraySegment))
                 {
                     arrayPool.Return(arraySegment.Array!);
+                    return;
                 }
             }
             if (_owner is IDisposable disposable)
