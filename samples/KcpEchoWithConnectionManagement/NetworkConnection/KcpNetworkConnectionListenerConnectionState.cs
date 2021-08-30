@@ -22,10 +22,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 throw new ObjectDisposedException(nameof(KcpNetworkConnectionListenerConnectionState));
             }
+            // TODO locks
             if (_networkConnection is not null)
             {
                 return _networkConnection;
             }
+            // TODO options
             _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, null);
             return _networkConnection;
         }
@@ -46,10 +48,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return;
             }
+            _disposed = true;
             _networkConnection = null;
         }
 
-        bool IKcpNetworkTransport.QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
+        public bool QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
         {
             if (_disposed)
             {
@@ -58,13 +61,26 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return ((IKcpNetworkTransport)_listener).QueuePacket(packet, remoteEndPoint);
         }
 
-        ValueTask IKcpNetworkTransport.QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
+        public ValueTask QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
             if (_disposed)
             {
                 return default;
             }
             return ((IKcpNetworkTransport)_listener).QueueAndSendPacketAsync(packet, remoteEndPoint, cancellationToken);
+        }
+
+        public ValueTask InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
+        {
+            if (_disposed)
+            {
+                return default;
+            }
+            if (_networkConnection is null)
+            {
+                _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, null);
+            }
+            return ((IKcpNetworkApplication)_networkConnection).InputPacketAsync(packet, remoteEndPoint, cancellationToken);
         }
 
     }

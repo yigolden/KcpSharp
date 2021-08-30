@@ -71,6 +71,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public ValueTask<bool> NegotiateAsync(CancellationToken cancellationToken)
         {
+            KcpNetworkConnection? networkConnection = _networkConnection;
+            if (networkConnection is null)
+            {
+                return new ValueTask<bool>(false);
+            }
+
             short token;
             lock (this)
             {
@@ -112,6 +118,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 }
             }
 
+            networkConnection.IngestCachedPacket();
             _cancellationRegistration = cancellationToken.UnsafeRegister(s => ((KcpNetworkConnectionNegotiationOperation?)s!).SetCanceled(), this);
             return new ValueTask<bool>(this, token);
         }
@@ -200,7 +207,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             bool? result = null;
             try
             {
-
                 result = UpdateCore();
             }
             catch (Exception)

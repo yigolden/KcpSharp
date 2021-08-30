@@ -115,12 +115,19 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             Interlocked.Exchange(ref _lastActiveTimeTicks, DateTime.UtcNow.ToBinary());
             SwitchToConnectedState();
+            if (_cachedPacket.HasValue)
+            {
+                _cachedPacket.GetValueOrDefault().Dispose();
+                _cachedPacket = default;
+            }
         }
 
         internal void IngestCachedPacket()
         {
-            //if (_cachedPacket)
-            
+            if (_cachedPacket.HasValue && _negotiationOperation is not null)
+            {
+                _negotiationOperation.InputPacket(_cachedPacket.GetValueOrDefault().Span);
+            }
         }
 
         internal IKcpBufferPool GetAllocator() => _bufferPool;
@@ -149,6 +156,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             else
             {
                 SwitchToFailedState();
+            }
+            if (_cachedPacket.HasValue)
+            {
+                _cachedPacket.GetValueOrDefault().Dispose();
+                _cachedPacket = null;
             }
         }
 
@@ -284,13 +296,15 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return true;
         }
 
-
         ValueTask IKcpNetworkApplication.InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
             if (packet.Length < 4)
             {
                 return default;
             }
+
+            // TODO process disposed
+
 
             bool? processResult = null;
             uint? remoteSerial = null;
@@ -301,8 +315,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 if (!_cachedPacket.HasValue)
                 {
                     KcpRentedBuffer rentedBuffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, false));
-
-                    _cachedPacket = 
+                    packet.Span.CopyTo(rentedBuffer.Span);
+                    _cachedPacket = rentedBuffer.Slice(0, packet.Length);
                 }
             }
             else if (_state == KcpNetworkConnectionState.Connecting)
@@ -389,6 +403,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             if (_state != KcpNetworkConnectionState.Dead)
             {
                 SwitchToDeadState();
+            }
+            if (_cachedPacket.HasValue)
+            {
+                _cachedPacket.GetValueOrDefault().Dispose();
+                _cachedPacket = null;
             }
         }
 
