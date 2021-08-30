@@ -12,6 +12,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         private readonly ConcurrentDictionary<EndPoint, KcpNetworkConnectionListenerConnectionState> _connections = new();
         private readonly KcpNetworkConnectionAcceptQueue _acceptQueue;
+        private bool _disposed;
 
         public KcpNetworkConnectionListener(IKcpNetworkTransport transport, bool ownsTransport, NetworkConnectionListenerOptions? options)
         {
@@ -58,12 +59,27 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 return default;
             }
 
-            // TODO create and add to dictionary
+            connectionState = new KcpNetworkConnectionListenerConnectionState(this, remoteEndPoint);
+            if (!_connections.TryAdd(remoteEndPoint, connectionState))
+            {
+                connectionState.SetDisposed();
+                return default;
+            }
 
-            // add to accept queue
-            // forward packet
-            return default;
+            if (_disposed || !_acceptQueue.TryQueue(connectionState))
+            {
+                if (_connections.TryRemove(new KeyValuePair<EndPoint, KcpNetworkConnectionListenerConnectionState>(remoteEndPoint, connectionState)))
+                {
+                    connectionState.SetDisposed();
+                }
+                return default;
+            }
+
+            return connectionState.InputPacketAsync(packet, remoteEndPoint, cancellationToken);
         }
+
+        public ValueTask<KcpNetworkConnection> AcceptAsync(CancellationToken cancellationToken)
+            => _acceptQueue.AcceptAsync(cancellationToken);
 
         void IKcpNetworkApplication.SetTransportClosed() => throw new NotImplementedException();
 
@@ -76,6 +92,22 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 _transport.Dispose();
                 _ownsTransport = false;
+            }
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            _acceptQueue.SetDisposed();
+            while (!_connections.IsEmpty)
+            {
+                foreach (KeyValuePair<EndPoint, KcpNetworkConnectionListenerConnectionState> item in _connections)
+                {
+                    if (_connections.TryRemove(item))
+                    {
+                        item.Value.SetDisposed();
+                    }
+                }
             }
         }
 
