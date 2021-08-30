@@ -17,6 +17,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         private readonly EndPoint _remoteEndPoint;
         private readonly KcpNetworkConnectionCallbackManagement _callbackManagement;
         private KcpNetworkConnectionState _state;
+        private KcpRentedBuffer? _cachedPacket;
 
         private KcpNetworkConnectionNegotiationOperation? _negotiationOperation;
         private KcpNetworkConnectionKeepAliveHandler? _keepAliveHandler;
@@ -114,6 +115,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             Interlocked.Exchange(ref _lastActiveTimeTicks, DateTime.UtcNow.ToBinary());
             SwitchToConnectedState();
+        }
+
+        internal void IngestCachedPacket()
+        {
+            //if (_cachedPacket)
+            
         }
 
         internal IKcpBufferPool GetAllocator() => _bufferPool;
@@ -288,7 +295,17 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             bool? processResult = null;
             uint? remoteSerial = null;
             ReadOnlyMemory<byte> dataPayload = default;
-            if (_state == KcpNetworkConnectionState.Connecting)
+            if (_state == KcpNetworkConnectionState.None)
+            {
+                // cache the initial packet for negotiation
+                if (!_cachedPacket.HasValue)
+                {
+                    KcpRentedBuffer rentedBuffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, false));
+
+                    _cachedPacket = 
+                }
+            }
+            else if (_state == KcpNetworkConnectionState.Connecting)
             {
                 ReadOnlySpan<byte> packetSpan = packet.Span;
                 if (packetSpan[0] == 1)
