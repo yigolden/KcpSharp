@@ -6,6 +6,10 @@ namespace KcpSharp
 {
     internal static class ThrowHelper
     {
+        public static void ThrowArgumentOutOfRangeException(string paramName)
+        {
+            throw new ArgumentOutOfRangeException(paramName);
+        }
         public static void ThrowTransportClosedForStreanException()
         {
             throw new IOException("The underlying transport is closed.");
