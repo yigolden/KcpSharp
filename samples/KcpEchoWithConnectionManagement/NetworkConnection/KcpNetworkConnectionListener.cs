@@ -8,13 +8,17 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     {
         private readonly IKcpNetworkTransport _transport;
         private bool _ownsTransport;
+        private readonly NetworkConnectionListenerOptions? _options;
 
-        private ConcurrentDictionary<EndPoint, KcpNetworkConnectionListenerConnectionState> _connections = new();
+        private readonly ConcurrentDictionary<EndPoint, KcpNetworkConnectionListenerConnectionState> _connections = new();
+        private readonly KcpNetworkConnectionAcceptQueue _acceptQueue;
 
-        public KcpNetworkConnectionListener(IKcpNetworkTransport transport, bool ownsTransport)
+        public KcpNetworkConnectionListener(IKcpNetworkTransport transport, bool ownsTransport, NetworkConnectionListenerOptions? options)
         {
             _transport = transport;
             _ownsTransport = ownsTransport;
+            _options = options;
+            _acceptQueue = new KcpNetworkConnectionAcceptQueue(options?.BackLog ?? 128);
         }
 
         public static KcpNetworkConnectionListener Listen(EndPoint localEndPoint, EndPoint remoteEndPoint, NetworkConnectionListenerOptions? options)
@@ -27,7 +31,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 transport.Bind(localEndPoint);
 
                 // setup connection
-                listener = new KcpNetworkConnectionListener(transport, true);
+                listener = new KcpNetworkConnectionListener(transport, true, options);
 
                 // start pumping data
                 transport.Start(listener, remoteEndPoint, options?.SendQueueSize ?? 1024);
@@ -46,8 +50,18 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             if (_connections.TryGetValue(remoteEndPoint, out KcpNetworkConnectionListenerConnectionState? connectionState))
             {
+                return connectionState.InputPacketAsync(packet, remoteEndPoint, cancellationToken);
+            }
+
+            if (!_acceptQueue.IsQueueAvailable())
+            {
                 return default;
             }
+
+            // TODO create and add to dictionary
+
+            // add to accept queue
+            // forward packet
             return default;
         }
 
@@ -58,7 +72,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public void Dispose()
         {
-
+            if (_ownsTransport)
+            {
+                _transport.Dispose();
+                _ownsTransport = false;
+            }
         }
 
 
