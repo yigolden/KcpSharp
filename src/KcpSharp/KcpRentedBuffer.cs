@@ -9,7 +9,7 @@ namespace KcpSharp
     /// <summary>
     /// The buffer rented and owned by KcpSharp.
     /// </summary>
-    public struct KcpRentedBuffer : IEquatable<KcpRentedBuffer>, IDisposable
+    public readonly struct KcpRentedBuffer : IEquatable<KcpRentedBuffer>, IDisposable
     {
         private readonly object? _owner;
         private readonly Memory<byte> _memory;
@@ -123,6 +123,41 @@ namespace KcpSharp
                 throw new ArgumentNullException(nameof(memoryOwner));
             }
             return new KcpRentedBuffer(memoryOwner, memory);
+        }
+
+        /// <summary>
+        /// Forms a slice out of the current buffer that begins at a specified index.
+        /// </summary>
+        /// <param name="start">The index at which to begin the slice.</param>
+        /// <returns>An object that contains all elements of the current instance from start to the end of the instance.</returns>
+        public KcpRentedBuffer Slice(int start)
+        {
+            Memory<byte> memory = _memory;
+            if ((uint)start > (uint)memory.Length)
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(nameof(start));
+            }
+            return new KcpRentedBuffer(_owner, memory.Slice(start));
+        }
+
+        /// <summary>
+        /// Forms a slice out of the current memory starting at a specified index for a specified length.
+        /// </summary>
+        /// <param name="start">The index at which to begin the slice.</param>
+        /// <param name="length">The number of elements to include in the slice.</param>
+        /// <returns>An object that contains <paramref name="length"/> elements from the current instance starting at <paramref name="start"/>.</returns>
+        public KcpRentedBuffer Slice(int start, int length)
+        {
+            Memory<byte> memory = _memory;
+            if ((uint)start > (uint)memory.Length)
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(nameof(start));
+            }
+            if ((uint)length > (uint)(memory.Length - start))
+            {
+                ThrowHelper.ThrowArgumentOutOfRangeException(nameof(length));
+            }
+            return new KcpRentedBuffer(_owner, memory.Slice(start, length));
         }
 
         /// <inheritdoc />
