@@ -7,7 +7,7 @@ using KcpSharp;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
-    public sealed class KcpNetworkConnection : IKcpNetworkApplication
+    public sealed class KcpNetworkConnection : IKcpNetworkApplication, IDisposable
     {
         private readonly IKcpNetworkTransport _transport;
         private bool _ownsTransport;
@@ -33,7 +33,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public const int PreBufferSize = 8;
 
-        public KcpNetworkConnection(IKcpNetworkTransport transport, bool ownsTransport, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
+        private KcpNetworkConnection(IKcpNetworkTransport transport, bool ownsTransport, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
         {
             _transport = transport;
             _ownsTransport = ownsTransport;
@@ -44,6 +44,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             _callbackManagement = new KcpNetworkConnectionCallbackManagement();
         }
 
+
         public static async Task<KcpNetworkConnection> ConnectAsync(EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options, CancellationToken cancellationToken)
         {
             KcpSocketNetworkTransport? socketTransport = new KcpSocketNetworkTransport(options?.Mtu ?? 1400, options?.BufferPool);
@@ -52,31 +53,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 // connect to the remote host
                 await socketTransport.ConnectAsync(remoteEndPoint, cancellationToken).ConfigureAwait(false);
-
-                // setup connection
-                networkConnection = new KcpNetworkConnection(socketTransport, true, remoteEndPoint, options);
-
-                // start pumping data
-                socketTransport.Start(networkConnection, remoteEndPoint, options?.SendQueueSize ?? 1024);
-
-                socketTransport = null;
-                return Interlocked.Exchange<KcpNetworkConnection?>(ref networkConnection, null);
-            }
-            finally
-            {
-                networkConnection?.Dispose();
-                socketTransport?.Dispose();
-            }
-        }
-
-        public static KcpNetworkConnection Bind(EndPoint localEndPoint, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
-        {
-            KcpSocketNetworkTransport? socketTransport = new KcpSocketNetworkTransport(options?.Mtu ?? 1400, options?.BufferPool);
-            KcpNetworkConnection? networkConnection = null;
-            try
-            {
-                // bind to local port
-                socketTransport.Bind(localEndPoint);
 
                 // setup connection
                 networkConnection = new KcpNetworkConnection(socketTransport, true, remoteEndPoint, options);
@@ -302,6 +278,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return default;
             }
+            if (!_remoteEndPoint.Equals(remoteEndPoint))
+            {
+                return default;
+            }
 
             // TODO process disposed
 
@@ -336,7 +316,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 }
                 else if (packetSpan[0] == 3)
                 {
-                    // payload0
+                    // payload
                     if (TryParseDataPacketHeader(packetSpan, out ushort length, out uint serial))
                     {
                         dataPayload = packet.Slice(8, length - 4);
@@ -380,7 +360,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return default;
         }
 
-        void IKcpNetworkApplication.SetTransportClosed() => throw new NotImplementedException();
+        public void SetTransportClosed()
+        {
+            // TODO
+        }
 
         public void Dispose()
         {

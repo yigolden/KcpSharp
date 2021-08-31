@@ -9,6 +9,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         private readonly LinkedList<KcpNetworkConnectionListenerConnectionState> _queue = new();
         private readonly LinkedList<KcpNetworkConnectionListenerConnectionState> _cache = new();
+        private bool _transportClosed;
         private bool _disposed;
 
         private bool _isActive;
@@ -52,6 +53,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 {
                     return ValueTask.FromException<KcpNetworkConnection>(new ObjectDisposedException(nameof(KcpNetworkConnectionAcceptQueue)));
                 }
+                if (_transportClosed)
+                {
+                    return ValueTask.FromException<KcpNetworkConnection>(new InvalidOperationException());
+                }
                 LinkedListNode<KcpNetworkConnectionListenerConnectionState>? node = _queue.First;
                 if (node is not null)
                 {
@@ -92,10 +97,34 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 {
                     return;
                 }
+                _transportClosed = true;
+                _disposed = true;
                 if (_isActive)
                 {
                     ClearPreviousOperations();
                     _mrvtsc.SetException(new ObjectDisposedException(nameof(KcpNetworkConnectionAcceptQueue)));
+                }
+            }
+            foreach (KcpNetworkConnectionListenerConnectionState item in _queue)
+            {
+                item.SetDisposed();
+            }
+            _queue.Clear();
+        }
+
+        public void SetTransportClosed()
+        {
+            lock (this)
+            {
+                if (_transportClosed)
+                {
+                    return;
+                }
+                _transportClosed = true;
+                if (_isActive)
+                {
+                    ClearPreviousOperations();
+                    _mrvtsc.SetException(new InvalidOperationException());
                 }
             }
             foreach (KcpNetworkConnectionListenerConnectionState item in _queue)
@@ -115,21 +144,18 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public bool IsQueueAvailable()
         {
-            lock (_queue)
+            if (_disposed || _transportClosed)
             {
-                if (_disposed)
-                {
-                    return false;
-                }
-                return _queue.Count < _capacity;
+                return false;
             }
+            return _queue.Count < _capacity;
         }
 
         public bool TryQueue(KcpNetworkConnectionListenerConnectionState state)
         {
             lock (_queue)
             {
-                if (_disposed)
+                if (_disposed || _transportClosed)
                 {
                     return false;
                 }

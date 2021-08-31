@@ -7,8 +7,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     {
         private readonly KcpNetworkConnectionListener _listener;
         private readonly EndPoint _remoteEndPoint;
+        private bool _transportClosed;
         private bool _disposed;
         private KcpNetworkConnection? _networkConnection;
+        private SpinLock _lock;
 
         public KcpNetworkConnectionListenerConnectionState(KcpNetworkConnectionListener listener, EndPoint remoteEndPoint)
         {
@@ -18,69 +20,150 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public KcpNetworkConnection CreateNetworkConnection()
         {
-            if (_disposed)
+            bool lockTaken = false;
+            try
             {
-                throw new ObjectDisposedException(nameof(KcpNetworkConnectionListenerConnectionState));
-            }
-            // TODO locks
-            if (_networkConnection is not null)
-            {
+                if (_disposed)
+                {
+                    throw new ObjectDisposedException(nameof(KcpNetworkConnectionListenerConnectionState));
+                }
+                if (_transportClosed)
+                {
+                    throw new InvalidOperationException();
+                }
+                if (_networkConnection is not null)
+                {
+                    return _networkConnection;
+                }
+                _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, _listener.GetConnectionOptions());
                 return _networkConnection;
             }
-            // TODO options
-            _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, null);
-            return _networkConnection;
+            finally
+            {
+                if (lockTaken)
+                {
+                    _lock.Exit();
+                }
+            }
+        }
+
+        public void SetTransportClosed()
+        {
+            bool lockTaken = false;
+            try
+            {
+                if (_transportClosed)
+                {
+                    return;
+                }
+                _transportClosed = true;
+                _networkConnection?.SetTransportClosed();
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _lock.Exit();
+                }
+            }
         }
 
         public void SetDisposed()
         {
             // This is called by the listener
-            if (_networkConnection is not null)
+            IDisposable? disposable = null;
+            bool lockTaken = false;
+            try
             {
-                _networkConnection.Dispose();
+                if (_disposed)
+                {
+                    return;
+                }
+                disposable = _networkConnection;
+                _transportClosed = true;
+                _disposed = true;
+                _networkConnection = null;
             }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _lock.Exit();
+                }
+            }
+
+            disposable?.Dispose();
         }
 
         public void Dispose()
         {
             // This is called by NetworkConnection
-            if (_disposed)
+            bool lockTaken = false;
+            try
             {
-                return;
+                if (_disposed)
+                {
+                    return;
+                }
+                _disposed = true;
+                _networkConnection = null;
             }
-            _disposed = true;
-            _networkConnection = null;
+            finally
+            {
+                if (lockTaken)
+                {
+                    _lock.Exit();
+                }
+            }
+
+            _listener.NotifyDisposed(_remoteEndPoint, this);
         }
 
         public bool QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
         {
-            if (_disposed)
+            if (_transportClosed || _disposed)
             {
                 return false;
             }
-            return ((IKcpNetworkTransport)_listener).QueuePacket(packet, remoteEndPoint);
+            return _listener.QueuePacket(packet, remoteEndPoint);
         }
 
         public ValueTask QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
-            if (_disposed)
+            if (_transportClosed || _disposed)
             {
                 return default;
             }
-            return ((IKcpNetworkTransport)_listener).QueueAndSendPacketAsync(packet, remoteEndPoint, cancellationToken);
+            return _listener.QueueAndSendPacketAsync(packet, remoteEndPoint, cancellationToken);
         }
 
         public ValueTask InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
-            if (_disposed)
+            IKcpNetworkApplication? networkConnection;
+            bool lockTaken = false;
+            try
             {
-                return default;
+                _lock.Enter(ref lockTaken);
+
+                if (_transportClosed || _disposed)
+                {
+                    return default;
+                }
+                networkConnection = _networkConnection;
+                if (networkConnection is null)
+                {
+                    networkConnection = _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, _listener.GetConnectionOptions());
+                }
             }
-            if (_networkConnection is null)
+            finally
             {
-                _networkConnection = new KcpNetworkConnection(this, true, _remoteEndPoint, null);
+                if (lockTaken)
+                {
+                    _lock.Exit();
+                }
             }
-            return ((IKcpNetworkApplication)_networkConnection).InputPacketAsync(packet, remoteEndPoint, cancellationToken);
+
+            return networkConnection.InputPacketAsync(packet, remoteEndPoint, cancellationToken);
         }
 
     }

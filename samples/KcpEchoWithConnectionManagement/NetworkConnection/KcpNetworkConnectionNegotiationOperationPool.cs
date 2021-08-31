@@ -1,4 +1,4 @@
-﻿using KcpSharp;
+﻿using System.Collections.Concurrent;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
@@ -18,4 +18,25 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         protected internal virtual void Return(KcpNetworkConnectionNegotiationOperation operation) { }
     }
+
+    internal class KcpNetworkConnectionNegotiationOperationInfinitePool : KcpNetworkConnectionNegotiationOperationPool
+    {
+        private readonly ConcurrentQueue<KcpNetworkConnectionNegotiationOperation> _queue = new();
+
+        public override KcpNetworkConnectionNegotiationOperation Rent(KcpNetworkConnection networkConnection, IKcpConnectionNegotiationContext negotiationContext)
+        {
+            if (!_queue.TryDequeue(out KcpNetworkConnectionNegotiationOperation? operation))
+            {
+                operation = Allocate();
+            }
+            operation.Initialize(networkConnection, negotiationContext);
+            return operation;
+        }
+
+        protected internal override void Return(KcpNetworkConnectionNegotiationOperation operation)
+        {
+            _queue.Enqueue(operation);
+        }
+    }
+
 }

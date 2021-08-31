@@ -4,21 +4,28 @@ using KcpEchoWithConnectionManagement.SocketTransport;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
-    public sealed class KcpNetworkConnectionListener : IKcpNetworkApplication, IKcpNetworkTransport, IDisposable
+    public sealed class KcpNetworkConnectionListener : IKcpNetworkApplication, IDisposable
     {
         private readonly IKcpNetworkTransport _transport;
         private bool _ownsTransport;
-        private readonly NetworkConnectionListenerOptions? _options;
+        private readonly KcpNetworkConnectionOptions _connectionOptions;
 
         private readonly ConcurrentDictionary<EndPoint, KcpNetworkConnectionListenerConnectionState> _connections = new();
         private readonly KcpNetworkConnectionAcceptQueue _acceptQueue;
+        private bool _transportClosed;
         private bool _disposed;
 
         public KcpNetworkConnectionListener(IKcpNetworkTransport transport, bool ownsTransport, NetworkConnectionListenerOptions? options)
         {
             _transport = transport;
             _ownsTransport = ownsTransport;
-            _options = options;
+            _connectionOptions = new KcpNetworkConnectionOptions
+            {
+                BufferPool = options?.BufferPool,
+                Mtu = options?.Mtu ?? 1400,
+                SendQueueSize = options?.SendQueueSize ?? 1024,
+                NegotiationOperationPool = new KcpNetworkConnectionNegotiationOperationInfinitePool()
+            };
             _acceptQueue = new KcpNetworkConnectionAcceptQueue(options?.BackLog ?? 128);
         }
 
@@ -47,6 +54,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
         }
 
+        internal KcpNetworkConnectionOptions? GetConnectionOptions() => _connectionOptions;
+
         ValueTask IKcpNetworkApplication.InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
             if (_connections.TryGetValue(remoteEndPoint, out KcpNetworkConnectionListenerConnectionState? connectionState))
@@ -66,7 +75,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 return default;
             }
 
-            if (_disposed || !_acceptQueue.TryQueue(connectionState))
+            if (_disposed || _transportClosed || !_acceptQueue.TryQueue(connectionState))
             {
                 if (_connections.TryRemove(new KeyValuePair<EndPoint, KcpNetworkConnectionListenerConnectionState>(remoteEndPoint, connectionState)))
                 {
@@ -81,10 +90,39 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         public ValueTask<KcpNetworkConnection> AcceptAsync(CancellationToken cancellationToken)
             => _acceptQueue.AcceptAsync(cancellationToken);
 
-        void IKcpNetworkApplication.SetTransportClosed() => throw new NotImplementedException();
+        void IKcpNetworkApplication.SetTransportClosed()
+        {
+            if (_transportClosed)
+            {
+                return;
+            }
+            _transportClosed = true;
+            _acceptQueue.SetTransportClosed();
 
-        bool IKcpNetworkTransport.QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint) => _transport.QueuePacket(packet, remoteEndPoint);
-        ValueTask IKcpNetworkTransport.QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken) => _transport.QueueAndSendPacketAsync(packet, remoteEndPoint, cancellationToken);
+        }
+
+        internal bool QueuePacket(ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
+        {
+            if (_transportClosed)
+            {
+                return false;
+            }
+            return _transport.QueuePacket(packet, remoteEndPoint);
+        }
+
+        internal ValueTask QueueAndSendPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
+        {
+            if (_transportClosed)
+            {
+                return default;
+            }
+            return _transport.QueueAndSendPacketAsync(packet, remoteEndPoint, cancellationToken);
+        }
+
+        internal void NotifyDisposed(EndPoint remoteEndPoint, KcpNetworkConnectionListenerConnectionState connectionState)
+        {
+            _connections.TryRemove(new KeyValuePair<EndPoint, KcpNetworkConnectionListenerConnectionState>(remoteEndPoint, connectionState));
+        }
 
         public void Dispose()
         {
@@ -97,6 +135,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return;
             }
+            _transportClosed = true;
             _disposed = true;
             _acceptQueue.SetDisposed();
             while (!_connections.IsEmpty)
