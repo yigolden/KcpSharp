@@ -26,6 +26,11 @@ namespace KcpSharp
         /// </summary>
         public Span<byte> Span => _memory.Span;
 
+        /// <summary>
+        /// Whether this struct contains buffer rented from the pool.
+        /// </summary>
+        public bool IsAllocated => _owner is not null;
+
         internal KcpRentedBuffer(object? owner, Memory<byte> buffer)
         {
             _owner = owner;
