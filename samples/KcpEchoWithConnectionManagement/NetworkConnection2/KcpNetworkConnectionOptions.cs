@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using KcpSharp;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection2
 {
-    internal sealed class KcpNetworkConnectionReceiveQueue
+    public class KcpNetworkConnectionOptions
     {
-
-
+        public IKcpBufferPool? BufferPool { get; set; }
+        public int Mtu { get; set; }
     }
 }
