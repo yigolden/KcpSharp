@@ -32,6 +32,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection2
             _bufferPool = options?.BufferPool ?? DefaultBufferPool.Instance;
         }
 
+        internal IKcpBufferPool GetAllocator() => _bufferPool;
+
         ValueTask IKcpNetworkApplication.InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
         {
             // TODO other validation
@@ -62,7 +64,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection2
                     {
                         return default;
                     }
-                    if (_cachedNegotiationPacket.Span.IsEmpty)
+                    if (_cachedNegotiationPacket.IsAllocated)
                     {
                         KcpRentedBuffer rentedBuffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, false));
                         packet.Span.CopyTo(rentedBuffer.Span);
@@ -143,7 +145,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection2
 
             lock (_negotiationLock)
             {
-                if (_cachedNegotiationPacket.Span.Length == 0)
+                if (_cachedNegotiationPacket.IsAllocated)
                 {
                     _cachedNegotiationPacket.Dispose();
                     _cachedNegotiationPacket = default;
@@ -151,18 +153,43 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection2
             }
         }
 
-        private void ChangeStateTo(KcpNetworkConnectionState state)
+        private void CheckAndChangeStateTo(KcpNetworkConnectionState expectedState, KcpNetworkConnectionState newState)
         {
             bool lockTaken = false;
             try
             {
                 _stateChangeLock.Enter(ref lockTaken);
 
-                if (_state == state)
+                if (_state != expectedState)
+                {
+                    throw new InvalidOperationException();
+                }
+                _state = newState;
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _stateChangeLock.Exit();
+                }
+
+            }
+
+            _callbackManagement.NotifyStateChanged(this);
+        }
+
+        private void ChangeStateTo(KcpNetworkConnectionState newState)
+        {
+            bool lockTaken = false;
+            try
+            {
+                _stateChangeLock.Enter(ref lockTaken);
+
+                if (_state == newState)
                 {
                     return;
                 }
-                _state = state;
+                _state = newState;
             }
             finally
             {
