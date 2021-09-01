@@ -14,5 +14,3 @@ serverConnection.SkipNegotiation();
 
 Console.WriteLine("Hello, World!");
 
-
-

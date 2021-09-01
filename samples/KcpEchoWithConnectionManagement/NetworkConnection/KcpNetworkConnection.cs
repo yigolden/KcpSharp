@@ -263,9 +263,14 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             else if (_state == KcpNetworkConnectionState.Connecting)
             {
                 ReadOnlySpan<byte> packetSpan = packet.Span;
+                KcpNetworkConnectionNegotiationOperation? negotiationOperation = Volatile.Read(ref _negotiationOperation);
                 if (packetSpan[0] == 1)
                 {
-                    processResult = _negotiationOperation?.InputPacket(packetSpan);
+                    processResult = negotiationOperation?.InputPacket(packetSpan);
+                }
+                else
+                {
+                    processResult = negotiationOperation?.NotifyRemoteProgressing();
                 }
             }
             else if (_state == KcpNetworkConnectionState.Connected)
@@ -329,7 +334,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             if (packet.Length < PreBufferSize)
             {
-                return default;
+                return ValueTask.FromException(new ArgumentException("Buffer must contain space for connection header.", nameof(packet)));
             }
 
             WriteDataPacketHeader(packet.Span, _nextLocalSerial++);

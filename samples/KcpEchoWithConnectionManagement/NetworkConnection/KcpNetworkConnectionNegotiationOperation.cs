@@ -28,10 +28,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         private uint _sendTicks;
         private KcpRentedBuffer _sendBuffer;
         private byte _sendRetryCount;
+        private bool _sendReadyMessage;
 
         private byte _receiveSerial;
         private KcpRentedBuffer _receiveBuffer;
         private uint _receivedSessionId;
+        private bool _receivedReadyMessage;
 
         private int _tickOperationActive; // 0-no 1-yes
 
@@ -124,10 +126,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                     _sendTicks = (uint)Environment.TickCount;
                     _sendBuffer = default;
                     _sendRetryCount = 0;
+                    _sendReadyMessage = false;
 
                     _receiveSerial = 0;
                     _receiveBuffer = default;
                     _receivedSessionId = 0;
+                    _receivedReadyMessage = false;
 
                     if (_timer is null)
                     {
@@ -160,6 +164,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 if (_isActive && _isRunning)
                 {
+                    if (!_isDisposed && !_isCanceled)
+                    {
+                        ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                    }
                     _isCanceled = true;
                 }
             }
@@ -170,6 +178,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 if (_isActive && _isRunning)
                 {
+                    if (!_isDisposed && !_isCanceled)
+                    {
+                        ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+                    }
                     _isDisposed = true;
                 }
             }
@@ -197,10 +209,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 _sendBuffer.Dispose();
                 _sendBuffer = default;
                 _sendRetryCount = 0;
+                _sendReadyMessage = false;
 
                 _receiveSerial = 0;
                 _receiveBuffer.Dispose();
                 _receivedSessionId = 0;
+                _receivedReadyMessage = false;
             }
         }
 
@@ -259,15 +273,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         }
                         else if (_isCanceled)
                         {
-                            // TODO do callback outside lock
-                            CancellationToken cancellationToken = _cancellationToken;
-                            ClearPreviousOperation();
-                            exceptionToThrow = new OperationCanceledException(cancellationToken);
-                        }
-                        else if (result.HasValue)
-                        {
-                            // TODO do callback outside lock
-                            ClearPreviousOperation(); ;
+                            exceptionToThrow = new OperationCanceledException(_cancellationToken);
                         }
                     }
                 }
@@ -307,6 +313,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                     return false;
                 }
 
+                if (_sendReadyMessage && _receivedReadyMessage)
+                {
+                    return true;
+                }
+
                 // receiving side
                 if (_receiveBuffer.IsAllocated)
                 {
@@ -315,7 +326,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                     _receiveBuffer.Dispose();
                     _receiveBuffer = default;
 
-                    if (result.IsSucceeded)
+                    if (result.IsSucceeded && _receivedReadyMessage)
                     {
                         return true;
                     }
@@ -324,7 +335,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         return false;
                     }
                 }
-
+                else if (_receivedReadyMessage)
+                {
+                    if (!_sendReadyMessage)
+                    {
+                        return false;
+                    }
+                }
             }
 
             lock (_activityLock)
@@ -356,32 +373,39 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
                     if (_sessionId.HasValue)
                     {
-                        KcpRentedBuffer rentedBuffer = _sendBuffer;
-                        if (!rentedBuffer.IsAllocated)
+                        if (_sendBuffer.IsAllocated)
+                        {
+                            if (_receivedReadyMessage)
+                            {
+                                return false;
+                            }
+                        }
+                        else
                         {
                             // fill send buffer
-                            rentedBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(HeaderSize + 256, false));
+                            KcpRentedBuffer rentedBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(HeaderSize + 256, false));
                             KcpConnectionNegotiationResult result = negotiationContext.GetNegotiationData(rentedBuffer.Span.Slice(HeaderSize, 256));
-                            if (result.IsSucceeded)
+                            if (result.IsFailed)
                             {
                                 rentedBuffer.Dispose();
-                                return true;
+                                return false;
                             }
-                            if (result.IsFailed)
+                            if (!result.IsSucceeded && _receivedReadyMessage)
                             {
                                 rentedBuffer.Dispose();
                                 return false;
                             }
                             rentedBuffer = rentedBuffer.Slice(0, HeaderSize + result.BytesWritten);
                             _sendBuffer = rentedBuffer;
+                            _sendReadyMessage = result.IsSucceeded;
                             Debug.Assert(_sendRetryCount == 0);
 
                             // fill headers
-                            FillSendHeaders(_sendBuffer.Span, _sessionId.GetValueOrDefault(), _sendSerial, _receiveSerial);
+                            FillSendHeaders(rentedBuffer.Span, _sessionId.GetValueOrDefault(), result.IsSucceeded, _sendSerial, _receiveSerial);
                         }
 
                         // send this
-                        bool sendResult = networkConnection.QueueRawPacket(rentedBuffer.Span);
+                        bool sendResult = networkConnection.QueueRawPacket(_sendBuffer.Span);
 
                         if (!sendResult)
                         {
@@ -398,7 +422,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return null;
         }
 
-        private static void FillSendHeaders(Span<byte> buffer, uint sessionId, byte localSerial, byte remoteSerial)
+        private static void FillSendHeaders(Span<byte> buffer, uint sessionId, bool isLocalReady, byte localSerial, byte remoteSerial)
         {
             if (buffer.Length < 12)
             {
@@ -407,7 +431,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
 
             buffer[0] = 1;
-            buffer[1] = 0;
+            buffer[1] = isLocalReady ? (byte)1 : (byte)0;
             BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(2), (ushort)buffer.Length);
             BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(4), sessionId);
             buffer[8] = localSerial;
@@ -437,7 +461,20 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return false;
             }
-            if (packet[0] != 1 && packet[1] != 0)
+            if (packet[0] != 1)
+            {
+                return false;
+            }
+            bool isRemoteReady;
+            if (packet[1] == 1)
+            {
+                isRemoteReady = true;
+            }
+            else if (packet[1] == 0)
+            {
+                isRemoteReady = false;
+            }
+            else
             {
                 return false;
             }
@@ -446,6 +483,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return false;
             }
+
             uint packetSessionId = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(4));
             packet = packet.Slice(8);
 
@@ -464,58 +502,83 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             packet = packet.Slice(0, negotiationLength);
 
-            lock (_lock)
-            {
-                if (!_isActive)
-                {
-                    return false;
-                }
-                if (_isCanceled)
-                {
-                    CancellationToken cancellationToken = _cancellationToken;
-                    ClearPreviousOperation();
-                    _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
-                    return false;
-                }
-                if (_isDisposed)
-                {
-                    ClearPreviousOperation();
-                    _mrvtsc.SetResult(false);
-                    return false;
-                }
-            }
-
             IKcpBufferPool? bufferPool = _networkConnection?.GetAllocator();
             if (bufferPool is null)
             {
                 return false;
             }
 
-            lock (_activityLock)
+            lock (_lock)
             {
-                if (remoteSerial == (1 + _sendSerial))
+                if (!_isActive)
                 {
-                    _sendSerial++;
-                    _sendTicks = GetCurrentTicks();
-                    if (_sendBuffer.IsAllocated)
-                    {
-                        _sendBuffer.Dispose();
-                        _sendBuffer = default;
-                    }
-                    _sendRetryCount = 0;
+                    return false;
+                }
+                if (_isCanceled || _isDisposed)
+                {
+                    return false;
                 }
 
-                if (localSerial == _receiveSerial)
+                lock (_activityLock)
                 {
-                    _receiveSerial++;
-                    if (!_receiveBuffer.IsAllocated || _receiveBuffer.Span.Length < negotiationLength)
+                    if (_receivedReadyMessage)
                     {
-                        _receiveBuffer.Dispose();
-                        _receiveBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(negotiationLength, false));
+                        return true;
                     }
-                    packet.CopyTo(_receiveBuffer.Span);
-                    _receiveBuffer = _receiveBuffer.Slice(0, negotiationLength);
-                    _receivedSessionId = packetSessionId;
+
+                    if (remoteSerial == (1 + _sendSerial))
+                    {
+                        _sendSerial++;
+                        _sendTicks = GetCurrentTicks();
+                        if (_sendBuffer.IsAllocated)
+                        {
+                            _sendBuffer.Dispose();
+                            _sendBuffer = default;
+                        }
+                        _sendRetryCount = 0;
+                    }
+
+                    if (localSerial == _receiveSerial)
+                    {
+                        _receiveSerial++;
+                        if (!_receiveBuffer.IsAllocated || _receiveBuffer.Span.Length < negotiationLength)
+                        {
+                            _receiveBuffer.Dispose();
+                            _receiveBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(negotiationLength, false));
+                        }
+                        packet.CopyTo(_receiveBuffer.Span);
+                        _receiveBuffer = _receiveBuffer.Slice(0, negotiationLength);
+                        _receivedSessionId = packetSessionId;
+                        _receivedReadyMessage = isRemoteReady;
+                    }
+                }
+            }
+
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            return true;
+        }
+
+        public bool NotifyRemoteProgressing()
+        {
+            lock (_lock)
+            {
+                if (!_isActive)
+                {
+                    return false;
+                }
+                if (_isCanceled || _isDisposed)
+                {
+                    return false;
+                }
+
+                lock (_activityLock)
+                {
+                    if (_receivedReadyMessage)
+                    {
+                        return true;
+                    }
+
+                    _receivedReadyMessage = true;
                 }
             }
 
