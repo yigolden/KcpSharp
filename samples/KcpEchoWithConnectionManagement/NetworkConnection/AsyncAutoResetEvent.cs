@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks.Sources;
 
-namespace KcpEchoWithConnectionManagement.NetworkConnection2
+namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
     internal sealed class AsyncAutoResetEvent : IValueTaskSource
     {

@@ -11,54 +11,75 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     {
         private readonly IKcpNetworkTransport _transport;
         private bool _ownsTransport;
-        private KcpNetworkConnectionNegotiationOperationPool? _negotiationOperationPool;
+        private KcpSocketNetworkApplicationRegistration _applicationRegistration;
+        private readonly KcpNetworkConnectionNegotiationOperationPool? _negotiationOperationPool;
+        private readonly EndPoint _remoteEndPoint;
         private readonly IKcpBufferPool _bufferPool;
         private int _mtu;
-        private readonly EndPoint _remoteEndPoint;
-        private readonly KcpNetworkConnectionCallbackManagement _callbackManagement;
+
+        private bool _transportClosed;
+        private bool _disposed;
+
         private KcpNetworkConnectionState _state;
-        private KcpRentedBuffer? _cachedPacket;
+        private SpinLock _stateChangeLock;
+        private KcpNetworkConnectionCallbackManagement _callbackManagement = new();
+
+        private object _negotiationLock = new();
+        private bool _negotiationPacketCachingDisabled;
+        private KcpRentedBuffer _cachedNegotiationPacket;
 
         private KcpNetworkConnectionNegotiationOperation? _negotiationOperation;
         private KcpNetworkConnectionKeepAliveHandler? _keepAliveHandler;
 
         private uint _nextLocalSerial;
-
         private long _lastActiveTimeTicks;
         private SpinLock _remoteStatisticsLock;
         private uint _nextRemoteSerial;
         private uint _packetsReceived;
 
-        public int Mtu => _mtu;
-
         public const int PreBufferSize = 8;
 
-        private KcpNetworkConnection(IKcpNetworkTransport transport, bool ownsTransport, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
+        public KcpNetworkConnectionState State => _state;
+        public int Mtu => _mtu;
+
+        public KcpNetworkConnection(IKcpNetworkTransport transport, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
+        {
+            _transport = transport;
+            _ownsTransport = false;
+            _negotiationOperationPool = options?.NegotiationOperationPool;
+            _remoteEndPoint = remoteEndPoint;
+            _bufferPool = options?.BufferPool ?? DefaultBufferPool.Instance;
+            _mtu = options?.Mtu ?? 1400;
+        }
+
+        internal KcpNetworkConnection(IKcpNetworkTransport transport, bool ownsTransport, EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options)
         {
             _transport = transport;
             _ownsTransport = ownsTransport;
-            _bufferPool = options?.BufferPool ?? DefaultBufferPool.Instance;
             _negotiationOperationPool = options?.NegotiationOperationPool;
-            _mtu = options?.Mtu ?? 1400;
             _remoteEndPoint = remoteEndPoint;
-            _callbackManagement = new KcpNetworkConnectionCallbackManagement();
+            _bufferPool = options?.BufferPool ?? DefaultBufferPool.Instance;
+            _mtu = options?.Mtu ?? 1400;
         }
 
+        internal void SetApplicationRegistration(KcpSocketNetworkApplicationRegistration applicationRegistration)
+        {
+            _applicationRegistration = applicationRegistration;
+        }
 
-        public static async Task<KcpNetworkConnection> ConnectAsync(EndPoint remoteEndPoint, KcpNetworkConnectionOptions? options, CancellationToken cancellationToken)
+        public static async Task<KcpNetworkConnection> ConnectAsync(EndPoint remoteEndPoint, int sendQueueSize, KcpNetworkConnectionOptions? options, CancellationToken cancellationToken)
         {
             KcpSocketNetworkTransport? socketTransport = new KcpSocketNetworkTransport(options?.Mtu ?? 1400, options?.BufferPool);
             KcpNetworkConnection? networkConnection = null;
             try
             {
-                // connect to the remote host
                 await socketTransport.ConnectAsync(remoteEndPoint, cancellationToken).ConfigureAwait(false);
 
-                // setup connection
                 networkConnection = new KcpNetworkConnection(socketTransport, true, remoteEndPoint, options);
 
-                // start pumping data
-                socketTransport.Start(networkConnection, remoteEndPoint, options?.SendQueueSize ?? 1024);
+                socketTransport.RegisterFallback(networkConnection);
+
+                socketTransport.Start(remoteEndPoint, sendQueueSize);
 
                 socketTransport = null;
                 return Interlocked.Exchange<KcpNetworkConnection?>(ref networkConnection, null);
@@ -67,42 +88,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 networkConnection?.Dispose();
                 socketTransport?.Dispose();
-            }
-        }
-
-        public ValueTask<bool> NegotiateAsync(IKcpConnectionNegotiationContext negotiationContext, CancellationToken cancellationToken)
-        {
-            SwitchToConnectingState();
-            Debug.Assert(_negotiationOperation is null);
-            if (_negotiationOperationPool is null)
-            {
-                _negotiationOperation = new KcpNetworkConnectionNegotiationOperation(null);
-                _negotiationOperation.Initialize(this, negotiationContext);
-            }
-            else
-            {
-                KcpNetworkConnectionNegotiationOperationPool pool = _negotiationOperationPool ?? new KcpNetworkConnectionNegotiationOperationPool();
-                _negotiationOperation = pool.Rent(this, negotiationContext);
-            }
-            return _negotiationOperation.NegotiateAsync(cancellationToken);
-        }
-
-        public void SkipNegotiation()
-        {
-            Interlocked.Exchange(ref _lastActiveTimeTicks, DateTime.UtcNow.ToBinary());
-            SwitchToConnectedState();
-            if (_cachedPacket.HasValue)
-            {
-                _cachedPacket.GetValueOrDefault().Dispose();
-                _cachedPacket = default;
-            }
-        }
-
-        internal void IngestCachedPacket()
-        {
-            if (_cachedPacket.HasValue && _negotiationOperation is not null)
-            {
-                _negotiationOperation.InputPacket(_cachedPacket.GetValueOrDefault().Span);
             }
         }
 
@@ -116,6 +101,15 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         internal void NotifyNegotiationResult(KcpNetworkConnectionNegotiationOperation operation, bool success, int? negotiatedMtu)
         {
             Interlocked.CompareExchange(ref _negotiationOperation, null, operation);
+            lock (_negotiationLock)
+            {
+                _negotiationPacketCachingDisabled = true;
+                if (_cachedNegotiationPacket.IsAllocated)
+                {
+                    _cachedNegotiationPacket.Dispose();
+                    _cachedNegotiationPacket = default;
+                }
+            }
             if (_state != KcpNetworkConnectionState.Connecting)
             {
                 return;
@@ -127,16 +121,47 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             if (success)
             {
                 Interlocked.Exchange(ref _lastActiveTimeTicks, DateTime.UtcNow.ToBinary());
-                SwitchToConnectedState();
+                ChangeStateTo(KcpNetworkConnectionState.Connected);
             }
             else
             {
-                SwitchToFailedState();
+                ChangeStateTo(KcpNetworkConnectionState.Failed);
             }
-            if (_cachedPacket.HasValue)
+        }
+
+        public ValueTask<bool> NegotiateAsync(IKcpConnectionNegotiationContext negotiationContext, CancellationToken cancellationToken)
+        {
+            CheckAndChangeStateTo(KcpNetworkConnectionState.None, KcpNetworkConnectionState.Connecting);
+            Debug.Assert(_negotiationOperation is null);
+            if (_negotiationOperationPool is null)
             {
-                _cachedPacket.GetValueOrDefault().Dispose();
-                _cachedPacket = null;
+                _negotiationOperation = new KcpNetworkConnectionNegotiationOperation(null);
+                _negotiationOperation.Initialize(this, negotiationContext);
+            }
+            else
+            {
+                KcpNetworkConnectionNegotiationOperationPool pool = _negotiationOperationPool ?? new KcpNetworkConnectionNegotiationOperationPool();
+                _negotiationOperation = pool.Rent(this, negotiationContext);
+            }
+            KcpRentedBuffer cachedPacket;
+            lock (_negotiationLock)
+            {
+                _negotiationPacketCachingDisabled = true;
+                cachedPacket = _cachedNegotiationPacket;
+                _cachedNegotiationPacket = default;
+            }
+            return _negotiationOperation.NegotiateAsync(cachedPacket, cancellationToken);
+        }
+
+        public void SkipNegotiation()
+        {
+            Interlocked.Exchange(ref _lastActiveTimeTicks, DateTime.UtcNow.ToBinary());
+            CheckAndChangeStateTo(KcpNetworkConnectionState.None, KcpNetworkConnectionState.Connecting);
+            lock (_negotiationLock)
+            {
+                _negotiationPacketCachingDisabled = true;
+                _cachedNegotiationPacket.Dispose();
+                _cachedNegotiationPacket = default;
             }
         }
 
@@ -190,86 +215,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
         }
 
-        private void SwitchToConnectingState()
+        public KcpNetworkConnectionCallbackRegistration Register<T>(IKcpNetworkConnectionCallback<T> callback, T state)
         {
-            if (_state != KcpNetworkConnectionState.None)
+            if (_disposed)
             {
-                ThrowInvalidOperationException();
+                ThrowObjectDisposedException();
             }
-            _state = KcpNetworkConnectionState.Connecting;
-            _callbackManagement.NotifyStateChanged(this);
-        }
-
-        private void SwitchToConnectedState()
-        {
-            if (_state != KcpNetworkConnectionState.None || _state != KcpNetworkConnectionState.Connecting)
-            {
-                ThrowInvalidOperationException();
-            }
-            _state = KcpNetworkConnectionState.Connected;
-            _callbackManagement.NotifyStateChanged(this);
-        }
-
-        private void SwitchToFailedState()
-        {
-            if (_state != KcpNetworkConnectionState.None || _state != KcpNetworkConnectionState.Connecting)
-            {
-                ThrowInvalidOperationException();
-            }
-            _state = KcpNetworkConnectionState.Failed;
-            _callbackManagement.NotifyStateChanged(this);
-        }
-
-        private void SwitchToDeadState()
-        {
-            _state = KcpNetworkConnectionState.Dead;
-            _callbackManagement.NotifyStateChanged(this);
-        }
-
-        public ValueTask SendPacketWithPreBufferAsync(Memory<byte> packet, CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return ValueTask.FromCanceled(cancellationToken);
-            }
-            if (packet.Length < PreBufferSize)
-            {
-                return default;
-            }
-
-            WriteDataPacketHeader(packet.Span, _nextLocalSerial++);
-            return _transport.QueueAndSendPacketAsync(packet, _remoteEndPoint, cancellationToken);
-        }
-
-        private static void WriteDataPacketHeader(Span<byte> buffer, uint serial)
-        {
-            if (buffer.Length < PreBufferSize)
-            {
-                Debug.Fail("Invalid buffer.");
-                return;
-            }
-            buffer[0] = 3;
-            buffer[1] = 0;
-            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(2), (ushort)(buffer.Length - 4));
-            BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(4), serial);
-        }
-
-        //private bool ProcessDataPacket(ReadOnlyMemory<byte> packet, )
-        private bool TryParseDataPacketHeader(ReadOnlySpan<byte> packet, out ushort length, out uint serial)
-        {
-            if (packet.Length < 8 || packet[0] != 3 || packet[1] != 0)
-            {
-                length = 0;
-                serial = 0;
-                return false;
-            }
-            length = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(2));
-            serial = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(4));
-            if ((packet.Length - 4) < length)
-            {
-                return false;
-            }
-            return true;
+            return _callbackManagement.Register(callback, state);
         }
 
         ValueTask IKcpNetworkApplication.InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
@@ -283,8 +235,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 return default;
             }
 
-            // TODO process disposed
-
+            if (_disposed || _transportClosed)
+            {
+                return default;
+            }
 
             bool? processResult = null;
             uint? remoteSerial = null;
@@ -292,11 +246,18 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             if (_state == KcpNetworkConnectionState.None)
             {
                 // cache the initial packet for negotiation
-                if (!_cachedPacket.HasValue)
+                lock (_negotiationLock)
                 {
-                    KcpRentedBuffer rentedBuffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, false));
-                    packet.Span.CopyTo(rentedBuffer.Span);
-                    _cachedPacket = rentedBuffer.Slice(0, packet.Length);
+                    if (_negotiationPacketCachingDisabled)
+                    {
+                        return default;
+                    }
+                    if (!_cachedNegotiationPacket.IsAllocated)
+                    {
+                        KcpRentedBuffer rentedBuffer = _bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, false));
+                        packet.Span.CopyTo(rentedBuffer.Span);
+                        _cachedNegotiationPacket = rentedBuffer.Slice(0, packet.Length);
+                    }
                 }
             }
             else if (_state == KcpNetworkConnectionState.Connecting)
@@ -360,19 +321,71 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return default;
         }
 
-        public void SetTransportClosed()
+        public ValueTask SendPacketWithPreBufferAsync(Memory<byte> packet, CancellationToken cancellationToken)
         {
-            // TODO
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return ValueTask.FromCanceled(cancellationToken);
+            }
+            if (packet.Length < PreBufferSize)
+            {
+                return default;
+            }
+
+            WriteDataPacketHeader(packet.Span, _nextLocalSerial++);
+            return _transport.QueueAndSendPacketAsync(packet, _remoteEndPoint, cancellationToken);
         }
 
-        public void Dispose()
+        private static void WriteDataPacketHeader(Span<byte> buffer, uint serial)
         {
-            if (_ownsTransport)
+            if (buffer.Length < PreBufferSize)
             {
-                IKcpNetworkTransport transport = _transport;
-                _ownsTransport = false;
-                transport.Dispose();
+                Debug.Fail("Invalid buffer.");
+                return;
             }
+            buffer[0] = 3;
+            buffer[1] = 0;
+            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(2), (ushort)(buffer.Length - 4));
+            BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(4), serial);
+        }
+
+        private bool TryParseDataPacketHeader(ReadOnlySpan<byte> packet, out ushort length, out uint serial)
+        {
+            if (packet.Length < 8 || packet[0] != 3 || packet[1] != 0)
+            {
+                length = 0;
+                serial = 0;
+                return false;
+            }
+            length = BinaryPrimitives.ReadUInt16BigEndian(packet.Slice(2));
+            serial = BinaryPrimitives.ReadUInt32BigEndian(packet.Slice(4));
+            if ((packet.Length - 4) < length)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        public void SetTransportClosed()
+        {
+            if (_transportClosed)
+            {
+                return;
+            }
+            _transportClosed = true;
+
+            ChangeStateTo(KcpNetworkConnectionState.Dead);
+
+            lock (_negotiationLock)
+            {
+                _negotiationPacketCachingDisabled = true;
+                if (_cachedNegotiationPacket.IsAllocated)
+                {
+                    _cachedNegotiationPacket.Dispose();
+                    _cachedNegotiationPacket = default;
+                }
+            }
+
             if (_negotiationOperation is not null)
             {
                 _negotiationOperation.SetDisposed();
@@ -383,15 +396,75 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 _keepAliveHandler.Dispose();
                 _keepAliveHandler = null;
             }
-            if (_state != KcpNetworkConnectionState.Dead)
+        }
+
+        private void CheckAndChangeStateTo(KcpNetworkConnectionState expectedState, KcpNetworkConnectionState newState)
+        {
+            bool lockTaken = false;
+            try
             {
-                SwitchToDeadState();
+                _stateChangeLock.Enter(ref lockTaken);
+
+                if (_state != expectedState)
+                {
+                    ThrowInvalidOperationException();
+                }
+                _state = newState;
             }
-            if (_cachedPacket.HasValue)
+            finally
             {
-                _cachedPacket.GetValueOrDefault().Dispose();
-                _cachedPacket = null;
+                if (lockTaken)
+                {
+                    _stateChangeLock.Exit();
+                }
+
             }
+
+            _callbackManagement.NotifyStateChanged(this);
+        }
+
+        private void ChangeStateTo(KcpNetworkConnectionState newState)
+        {
+            bool lockTaken = false;
+            try
+            {
+                _stateChangeLock.Enter(ref lockTaken);
+
+                if (_state == newState)
+                {
+                    return;
+                }
+                _state = newState;
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _stateChangeLock.Exit();
+                }
+
+            }
+
+            _callbackManagement.NotifyStateChanged(this);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+
+            SetTransportClosed();
+
+            if (_ownsTransport)
+            {
+                _transport.Dispose();
+                _ownsTransport = false;
+            }
+            _applicationRegistration.Dispose();
+            _applicationRegistration = default;
         }
 
         [DoesNotReturn]
@@ -400,5 +473,10 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             throw new InvalidOperationException();
         }
 
+        [DoesNotReturn]
+        private static void ThrowObjectDisposedException()
+        {
+            throw new ObjectDisposedException(nameof(KcpNetworkConnection));
+        }
     }
 }

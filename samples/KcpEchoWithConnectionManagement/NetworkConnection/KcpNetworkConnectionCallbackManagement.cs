@@ -7,7 +7,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         private CallbackRegistrationNode? _callback;
         private CallbackRegistrationNode? _lastCallback;
 
-        public IDisposable Register<T>(IKcpNetworkConnectionCallback<T> callback, T state)
+        public KcpNetworkConnectionCallbackRegistration Register<T>(IKcpNetworkConnectionCallback<T> callback, T state)
         {
             if (callback is null)
             {
@@ -16,7 +16,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
             var node = new CallbackRegistrationNode<T>(this, callback, state);
             AddCallback(node);
-            return node;
+            return new KcpNetworkConnectionCallbackRegistration(node);
         }
 
         private void AddCallback(CallbackRegistrationNode node)
@@ -86,7 +86,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 catch
                 {
                     // TODO how to handle exceptions?
-                    throw;
                 }
                 callback = callback.NextNode;
             }

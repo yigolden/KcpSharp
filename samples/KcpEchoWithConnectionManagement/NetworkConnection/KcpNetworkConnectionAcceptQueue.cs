@@ -1,21 +1,21 @@
-﻿using System.Threading.Tasks.Sources;
+﻿using System.Diagnostics;
+using System.Threading.Tasks.Sources;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
-    internal sealed class KcpNetworkConnectionAcceptQueue : IValueTaskSource<KcpNetworkConnection>
+    internal sealed class KcpNetworkConnectionAcceptQueue : IValueTaskSource<KcpNetworkConnection>, IDisposable
     {
-        private ManualResetValueTaskSourceCore<KcpNetworkConnectionListenerConnectionState> _mrvtsc;
+        private ManualResetValueTaskSourceCore<KcpNetworkConnection> _mrvtsc;
         private readonly int _capacity;
 
-        private readonly LinkedList<KcpNetworkConnectionListenerConnectionState> _queue = new();
-        private readonly LinkedList<KcpNetworkConnectionListenerConnectionState> _cache = new();
-        private bool _transportClosed;
+        private readonly LinkedList<KcpNetworkConnection> _queue = new();
+        private readonly LinkedList<KcpNetworkConnection> _cache = new();
         private bool _disposed;
 
         private bool _isActive;
+        private bool _isExpectingResult;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
-
 
         ValueTaskSourceStatus IValueTaskSource<KcpNetworkConnection>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<KcpNetworkConnection>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
@@ -23,17 +23,26 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             try
             {
-                return _mrvtsc.GetResult(token).CreateNetworkConnection();
+                return _mrvtsc.GetResult(token);
             }
             finally
             {
                 _mrvtsc.Reset();
+
+                lock (_queue)
+                {
+                    if (_isActive)
+                    {
+                        _isActive = false;
+                        _isExpectingResult = false;
+                    }
+                }
             }
         }
 
         public KcpNetworkConnectionAcceptQueue(int capacity)
         {
-            _mrvtsc = new ManualResetValueTaskSourceCore<KcpNetworkConnectionListenerConnectionState>
+            _mrvtsc = new ManualResetValueTaskSourceCore<KcpNetworkConnection>
             {
                 RunContinuationsAsynchronously = true
             };
@@ -53,21 +62,18 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 {
                     return ValueTask.FromException<KcpNetworkConnection>(new ObjectDisposedException(nameof(KcpNetworkConnectionAcceptQueue)));
                 }
-                if (_transportClosed)
-                {
-                    return ValueTask.FromException<KcpNetworkConnection>(new InvalidOperationException());
-                }
-                LinkedListNode<KcpNetworkConnectionListenerConnectionState>? node = _queue.First;
+                LinkedListNode<KcpNetworkConnection>? node = _queue.First;
                 if (node is not null)
                 {
-                    KcpNetworkConnectionListenerConnectionState connectionState = node.Value;
+                    KcpNetworkConnection connection = node.Value;
                     node.Value = null!;
                     _queue.Remove(node);
                     _cache.AddLast(node);
-                    return new ValueTask<KcpNetworkConnection>(connectionState.CreateNetworkConnection());
+                    return new ValueTask<KcpNetworkConnection>(connection);
                 }
 
                 _isActive = true;
+                _isExpectingResult = true;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
             }
@@ -80,8 +86,9 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         {
             lock (this)
             {
-                if (_isActive)
+                if (_isExpectingResult)
                 {
+                    Debug.Assert(_isActive);
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperations();
                     _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
@@ -89,7 +96,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
         }
 
-        public void SetDisposed()
+        public void Dispose()
         {
             lock (this)
             {
@@ -97,46 +104,24 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 {
                     return;
                 }
-                _transportClosed = true;
                 _disposed = true;
-                if (_isActive)
+                if (_isExpectingResult)
                 {
+                    Debug.Assert(_isActive);
                     ClearPreviousOperations();
                     _mrvtsc.SetException(new ObjectDisposedException(nameof(KcpNetworkConnectionAcceptQueue)));
                 }
             }
-            foreach (KcpNetworkConnectionListenerConnectionState item in _queue)
+            foreach (KcpNetworkConnection item in _queue)
             {
-                item.SetDisposed();
-            }
-            _queue.Clear();
-        }
-
-        public void SetTransportClosed()
-        {
-            lock (this)
-            {
-                if (_transportClosed)
-                {
-                    return;
-                }
-                _transportClosed = true;
-                if (_isActive)
-                {
-                    ClearPreviousOperations();
-                    _mrvtsc.SetException(new InvalidOperationException());
-                }
-            }
-            foreach (KcpNetworkConnectionListenerConnectionState item in _queue)
-            {
-                item.SetDisposed();
+                item.Dispose();
             }
             _queue.Clear();
         }
 
         private void ClearPreviousOperations()
         {
-            _isActive = false;
+            _isExpectingResult = false;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
@@ -144,35 +129,36 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public bool IsQueueAvailable()
         {
-            if (_disposed || _transportClosed)
+            if (_disposed)
             {
                 return false;
             }
             return _queue.Count < _capacity;
         }
 
-        public bool TryQueue(KcpNetworkConnectionListenerConnectionState state)
+        public bool TryQueue(KcpNetworkConnection connection)
         {
             lock (_queue)
             {
-                if (_disposed || _transportClosed)
+                if (_disposed)
                 {
                     return false;
                 }
-                if (_isActive)
+                if (_isExpectingResult)
                 {
+                    Debug.Assert(_isActive);
                     ClearPreviousOperations();
-                    _mrvtsc.SetResult(state);
+                    _mrvtsc.SetResult(connection);
                     return true;
                 }
-                LinkedListNode<KcpNetworkConnectionListenerConnectionState>? node = _cache.First;
+                LinkedListNode<KcpNetworkConnection>? node = _cache.First;
                 if (node is null)
                 {
-                    node = new LinkedListNode<KcpNetworkConnectionListenerConnectionState>(state);
+                    node = new LinkedListNode<KcpNetworkConnection>(connection);
                 }
                 else
                 {
-                    node.Value = state;
+                    node.Value = connection;
                     _cache.Remove(node);
                 }
                 _queue.AddLast(node);

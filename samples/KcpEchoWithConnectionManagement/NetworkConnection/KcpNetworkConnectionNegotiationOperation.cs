@@ -13,25 +13,24 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         private ManualResetValueTaskSourceCore<bool> _mrvtsc;
         private bool _isActive;
+        private bool _isRunning;
         private bool _isCanceled;
         private bool _isDisposed;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
+        private object _lock = new object();
 
+        private object _activityLock = new object();
         private Timer? _timer;
-
-        private object _readWriteLock = new object();
         private uint? _sessionId;
 
         private byte _sendSerial;
         private uint _sendTicks;
-        private KcpRentedBuffer? _sendBuffer;
-        private ushort _sendBufferLength;
+        private KcpRentedBuffer _sendBuffer;
         private byte _sendRetryCount;
 
         private byte _receiveSerial;
-        private KcpRentedBuffer? _receiveBuffer;
-        private ushort _receiveBufferLength;
+        private KcpRentedBuffer _receiveBuffer;
         private uint _receivedSessionId;
 
         private int _tickOperationActive; // 0-no 1-yes
@@ -40,6 +39,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
         bool IValueTaskSource<bool>.GetResult(short token)
         {
+            bool shouldReturnToPool = false;
             try
             {
                 return _mrvtsc.GetResult(token);
@@ -47,9 +47,24 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             finally
             {
                 _mrvtsc.Reset();
-                _networkConnection = null;
-                _negotiationContext = null;
-                _pool?.Return(this);
+
+                lock (_lock)
+                {
+                    _networkConnection = null;
+                    _negotiationContext = null;
+
+                    if (_isActive)
+                    {
+                        Debug.Assert(!_isRunning);
+                        _isActive = false;
+                        shouldReturnToPool = true;
+                    }
+                }
+
+                if (shouldReturnToPool)
+                {
+                    _pool?.Return(this);
+                }
             }
         }
 
@@ -69,16 +84,17 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             _negotiationContext = negotiationContext;
         }
 
-        public ValueTask<bool> NegotiateAsync(CancellationToken cancellationToken)
+        public ValueTask<bool> NegotiateAsync(KcpRentedBuffer cachedPacket, CancellationToken cancellationToken)
         {
             KcpNetworkConnection? networkConnection = _networkConnection;
             if (networkConnection is null)
             {
+                cachedPacket.Dispose();
                 return new ValueTask<bool>(false);
             }
 
             short token;
-            lock (this)
+            lock (_lock)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -86,48 +102,63 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                     {
                         _pool?.Return(this);
                     }
+                    cachedPacket.Dispose();
                     return ValueTask.FromCanceled<bool>(cancellationToken);
                 }
                 if (_isActive)
                 {
+                    cachedPacket.Dispose();
                     return ValueTask.FromException<bool>(new InvalidOperationException());
                 }
 
                 _isActive = true;
+                _isRunning = true;
                 _isCanceled = false;
                 _isDisposed = false;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
 
-                _sendSerial = 0;
-                _sendTicks = (uint)Environment.TickCount;
-                _sendBuffer = default;
-                _sendBufferLength = 0;
-                _sendRetryCount = 0;
-
-                if (_timer is null)
+                lock (_activityLock)
                 {
-                    _timer = new Timer(static state =>
+                    _sendSerial = 0;
+                    _sendTicks = (uint)Environment.TickCount;
+                    _sendBuffer = default;
+                    _sendRetryCount = 0;
+
+                    _receiveSerial = 0;
+                    _receiveBuffer = default;
+                    _receivedSessionId = 0;
+
+                    if (_timer is null)
                     {
-                        var reference = (WeakReference<KcpNetworkConnectionNegotiationOperation>)state!;
-                        if (reference.TryGetTarget(out var target))
+                        _timer = new Timer(static state =>
                         {
-                            target.Execute();
-                        }
-                    }, new WeakReference<KcpNetworkConnectionNegotiationOperation>(this), TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
+                            var reference = (WeakReference<KcpNetworkConnectionNegotiationOperation>)state!;
+                            if (reference.TryGetTarget(out var target))
+                            {
+                                target.Execute();
+                            }
+                        }, new WeakReference<KcpNetworkConnectionNegotiationOperation>(this), TimeSpan.Zero, TimeSpan.FromMilliseconds(250));
+                    }
                 }
             }
 
-            networkConnection.IngestCachedPacket();
             _cancellationRegistration = cancellationToken.UnsafeRegister(s => ((KcpNetworkConnectionNegotiationOperation?)s!).SetCanceled(), this);
+
+            if (cachedPacket.IsAllocated)
+            {
+                InputPacket(cachedPacket.Span);
+                cachedPacket.Dispose();
+            }
+
             return new ValueTask<bool>(this, token);
         }
 
         private void SetCanceled()
         {
-            lock (this)
+            lock (_lock)
             {
-                if (_isActive)
+                if (_isActive && _isRunning)
                 {
                     _isCanceled = true;
                 }
@@ -135,9 +166,9 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
         }
         public void SetDisposed()
         {
-            lock (this)
+            lock (_lock)
             {
-                if (_isActive)
+                if (_isActive && _isRunning)
                 {
                     _isDisposed = true;
                 }
@@ -146,31 +177,29 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         private void ClearPreviousOperation()
         {
-            _isActive = false;
+            _isRunning = false;
             _isCanceled = false;
             _isDisposed = false;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
 
-            if (_timer is not null)
+            lock (_activityLock)
             {
-                _timer.Dispose();
-                _timer = null;
-            }
+                if (_timer is not null)
+                {
+                    _timer.Dispose();
+                    _timer = null;
+                }
 
-            lock (_readWriteLock)
-            {
                 _sendSerial = 0;
                 _sendTicks = 0;
-                _sendBuffer.GetValueOrDefault().Dispose();
+                _sendBuffer.Dispose();
                 _sendBuffer = default;
-                _sendBufferLength = 0;
                 _sendRetryCount = 0;
 
                 _receiveSerial = 0;
-                _receiveBuffer.GetValueOrDefault().Dispose();
-                _receiveBufferLength = 0;
+                _receiveBuffer.Dispose();
                 _receivedSessionId = 0;
             }
         }
@@ -181,9 +210,9 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 return;
             }
-            lock (this)
+            lock (_lock)
             {
-                if (!_isActive)
+                if (!_isActive || !_isRunning)
                 {
                     Interlocked.Exchange(ref _tickOperationActive, 0);
                     return;
@@ -216,32 +245,42 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             finally
             {
-                if (result.HasValue)
+                Exception? exceptionToThrow = null;
+                lock (_lock)
                 {
-                    lock (this)
+                    if (_isActive)
                     {
-                        if (_isActive)
+                        Debug.Assert(_isRunning);
+
+                        if (_isDisposed)
                         {
-                            bool isCanceled = _isCanceled;
-                            bool isDisposed = _isDisposed;
+                            ClearPreviousOperation();
+                            _mrvtsc.SetResult(false);
+                        }
+                        else if (_isCanceled)
+                        {
+                            // TODO do callback outside lock
                             CancellationToken cancellationToken = _cancellationToken;
                             ClearPreviousOperation();
-                            if (isCanceled)
-                            {
-                                _networkConnection?.NotifyNegotiationResult(this, false, null);
-                                _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
-                            }
-                            else if (isDisposed)
-                            {
-                                _mrvtsc.SetResult(false);
-                            }
-                            else
-                            {
-                                _networkConnection?.NotifyNegotiationResult(this, result.GetValueOrDefault(), _negotiationContext?.NegotiatedMtu);
-                                _mrvtsc.SetResult(result.GetValueOrDefault());
-                            }
+                            exceptionToThrow = new OperationCanceledException(cancellationToken);
+                        }
+                        else if (result.HasValue)
+                        {
+                            // TODO do callback outside lock
+                            ClearPreviousOperation(); ;
                         }
                     }
+                }
+
+                if (exceptionToThrow is not null)
+                {
+                    _networkConnection?.NotifyNegotiationResult(this, false, null);
+                    _mrvtsc.SetException(exceptionToThrow);
+                }
+                else if (result.HasValue)
+                {
+                    _networkConnection?.NotifyNegotiationResult(this, result.GetValueOrDefault(), _negotiationContext?.NegotiatedMtu);
+                    _mrvtsc.SetResult(result.GetValueOrDefault());
                 }
 
                 Interlocked.Exchange(ref _tickOperationActive, 0);
@@ -260,17 +299,21 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             IKcpBufferPool? bufferPool = networkConnection.GetAllocator();
 
-            lock (_readWriteLock)
+            lock (_activityLock)
             {
+                Debug.Assert(_isActive && _isRunning);
+                if (_isCanceled || _isDisposed)
+                {
+                    return false;
+                }
+
                 // receiving side
-                if (_receiveBuffer.HasValue)
+                if (_receiveBuffer.IsAllocated)
                 {
                     negotiationContext.SetSessionId(_receivedSessionId);
-                    KcpRentedBuffer rentedBuffer = _receiveBuffer.GetValueOrDefault();
-                    KcpConnectionNegotiationResult result = negotiationContext.PutNegotiationData(rentedBuffer.Span.Slice(0, _receiveBufferLength));
-                    rentedBuffer.Dispose();
-                    _receiveBuffer = null;
-                    _receiveBufferLength = 0;
+                    KcpConnectionNegotiationResult result = negotiationContext.PutNegotiationData(_receiveBuffer.Span);
+                    _receiveBuffer.Dispose();
+                    _receiveBuffer = default;
 
                     if (result.IsSucceeded)
                     {
@@ -280,6 +323,16 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                     {
                         return false;
                     }
+                }
+
+            }
+
+            lock (_activityLock)
+            {
+                Debug.Assert(_isActive && _isRunning);
+                if (_isCanceled || _isDisposed)
+                {
+                    return false;
                 }
 
                 // sending side
@@ -303,8 +356,8 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
                     if (_sessionId.HasValue)
                     {
-                        KcpRentedBuffer rentedBuffer = _sendBuffer.GetValueOrDefault();
-                        if (!_sendBuffer.HasValue)
+                        KcpRentedBuffer rentedBuffer = _sendBuffer;
+                        if (!rentedBuffer.IsAllocated)
                         {
                             // fill send buffer
                             rentedBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(HeaderSize + 256, false));
@@ -319,16 +372,16 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                                 rentedBuffer.Dispose();
                                 return false;
                             }
+                            rentedBuffer = rentedBuffer.Slice(0, HeaderSize + result.BytesWritten);
                             _sendBuffer = rentedBuffer;
-                            _sendBufferLength = (ushort)(HeaderSize + result.BytesWritten);
                             Debug.Assert(_sendRetryCount == 0);
 
                             // fill headers
-                            FillSendHeaders(rentedBuffer.Span.Slice(0, _sendBufferLength), _sessionId.GetValueOrDefault(), _sendSerial, _receiveSerial);
+                            FillSendHeaders(_sendBuffer.Span, _sessionId.GetValueOrDefault(), _sendSerial, _receiveSerial);
                         }
 
                         // send this
-                        bool sendResult = networkConnection.QueueRawPacket(rentedBuffer.Span.Slice(0, _sendBufferLength));
+                        bool sendResult = networkConnection.QueueRawPacket(rentedBuffer.Span);
 
                         if (!sendResult)
                         {
@@ -411,7 +464,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             packet = packet.Slice(0, negotiationLength);
 
-            lock (this)
+            lock (_lock)
             {
                 if (!_isActive)
                 {
@@ -438,31 +491,30 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 return false;
             }
 
-            lock (_readWriteLock)
+            lock (_activityLock)
             {
                 if (remoteSerial == (1 + _sendSerial))
                 {
                     _sendSerial++;
                     _sendTicks = GetCurrentTicks();
-                    if (_sendBuffer.HasValue)
+                    if (_sendBuffer.IsAllocated)
                     {
-                        _sendBuffer.GetValueOrDefault().Dispose();
+                        _sendBuffer.Dispose();
                         _sendBuffer = default;
                     }
-                    _sendBufferLength = 0;
                     _sendRetryCount = 0;
                 }
 
                 if (localSerial == _receiveSerial)
                 {
                     _receiveSerial++;
-                    if (!_receiveBuffer.HasValue || _receiveBuffer.GetValueOrDefault().Span.Length < negotiationLength)
+                    if (!_receiveBuffer.IsAllocated || _receiveBuffer.Span.Length < negotiationLength)
                     {
-                        _receiveBuffer.GetValueOrDefault().Dispose();
+                        _receiveBuffer.Dispose();
                         _receiveBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(negotiationLength, false));
                     }
-                    packet.CopyTo(_receiveBuffer.GetValueOrDefault().Span);
-                    _receiveBufferLength = negotiationLength;
+                    packet.CopyTo(_receiveBuffer.Span);
+                    _receiveBuffer = _receiveBuffer.Slice(0, negotiationLength);
                     _receivedSessionId = packetSessionId;
                 }
             }

@@ -99,7 +99,6 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             buffer[1] = 0;
             buffer[2] = 0;
             buffer[3] = 12;
-            // todo packet length
 
             BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(4), lastSerial);
             BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(8), serial);

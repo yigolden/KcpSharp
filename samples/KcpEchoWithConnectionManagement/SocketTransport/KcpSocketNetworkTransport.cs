@@ -113,7 +113,7 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             _applications.TryRemove(new KeyValuePair<EndPoint, ApplicationRegistration>(remoteEndPoint, application));
         }
 
-        private void UnregisterFallback(IKcpNetworkApplication application)
+        internal void UnregisterFallback(IKcpNetworkApplication application)
         {
             Interlocked.CompareExchange(ref _fallbackApplication, null, application);
         }
