@@ -3,7 +3,7 @@ using KcpEchoWithConnectionManagement.SocketTransport;
 
 namespace KcpEchoWithConnectionManagement.NetworkConnection
 {
-    public sealed class KcpNetworkConnectionListener : IKcpNetworkApplication
+    public sealed class KcpNetworkConnectionListener : IKcpNetworkApplication, IDisposable
     {
         private IKcpNetworkTransport? _transport;
         private bool _ownsTransport;
@@ -61,6 +61,16 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 listener?.Dispose();
                 transport?.Dispose();
             }
+        }
+
+        public ValueTask<KcpNetworkConnection> AcceptAsync(CancellationToken cancellationToken = default)
+        {
+            KcpNetworkConnectionAcceptQueue? acceptQueue = Volatile.Read(ref _acceptQueue);
+            if (acceptQueue is null)
+            {
+                return ValueTask.FromException<KcpNetworkConnection>(new ObjectDisposedException(nameof(KcpNetworkConnectionListener)));
+            }
+            return acceptQueue.AcceptAsync(cancellationToken);
         }
 
         ValueTask IKcpNetworkApplication.InputPacketAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
