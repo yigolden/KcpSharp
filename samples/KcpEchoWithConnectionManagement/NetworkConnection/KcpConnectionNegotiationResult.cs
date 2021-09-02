@@ -20,6 +20,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             _state = 1;
         }
 
+        public KcpConnectionNegotiationResult(int bytesWritten, bool negotiationSucceeded)
+        {
+            _bytesWritten = bytesWritten;
+            _state = negotiationSucceeded ? (byte)2 : (byte)0;
+        }
+
         private KcpConnectionNegotiationResult(byte state, int bytesWritten)
         {
             _bytesWritten = bytesWritten;

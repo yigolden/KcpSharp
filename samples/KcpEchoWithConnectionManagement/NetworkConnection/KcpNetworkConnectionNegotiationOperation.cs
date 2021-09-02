@@ -270,6 +270,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         {
                             ClearPreviousOperation();
                             _mrvtsc.SetResult(false);
+                            result = null;
                         }
                         else if (_isCanceled)
                         {
@@ -281,11 +282,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 if (exceptionToThrow is not null)
                 {
                     _networkConnection?.NotifyNegotiationResult(this, false, null);
+                    ClearPreviousOperation();
                     _mrvtsc.SetException(exceptionToThrow);
                 }
                 else if (result.HasValue)
                 {
                     _networkConnection?.NotifyNegotiationResult(this, result.GetValueOrDefault(), _negotiationContext?.NegotiatedMtu);
+                    ClearPreviousOperation();
                     _mrvtsc.SetResult(result.GetValueOrDefault());
                 }
 
@@ -353,15 +356,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 }
 
                 // sending side
-                if (!_sessionId.HasValue)
-                {
-                    if (negotiationContext.TryGetSessionId(out uint value))
-                    {
-                        _sessionId = value;
-                    }
-                }
-
-                if ((int)(_sendTicks - GetCurrentTicks()) > 0)
+                if ((int)(GetCurrentTicks() - _sendTicks) > 0)
                 {
                     if (!_sessionId.HasValue)
                     {
@@ -432,11 +427,11 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
             buffer[0] = 1;
             buffer[1] = isLocalReady ? (byte)1 : (byte)0;
-            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(2), (ushort)buffer.Length);
+            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(2), (ushort)(buffer.Length - 4));
             BinaryPrimitives.WriteUInt32BigEndian(buffer.Slice(4), sessionId);
             buffer[8] = localSerial;
             buffer[9] = remoteSerial;
-            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(10), (ushort)(buffer.Length - 4));
+            BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(10), (ushort)(buffer.Length - 12));
         }
 
         private static uint DetermineSendInterval(ref byte retryCount)
@@ -526,7 +521,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         return true;
                     }
 
-                    if (remoteSerial == (1 + _sendSerial))
+                    if (localSerial == (1 + _sendSerial))
                     {
                         _sendSerial++;
                         _sendTicks = GetCurrentTicks();
@@ -538,7 +533,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                         _sendRetryCount = 0;
                     }
 
-                    if (localSerial == _receiveSerial)
+                    if (remoteSerial == _receiveSerial)
                     {
                         _receiveSerial++;
                         if (!_receiveBuffer.IsAllocated || _receiveBuffer.Span.Length < negotiationLength)

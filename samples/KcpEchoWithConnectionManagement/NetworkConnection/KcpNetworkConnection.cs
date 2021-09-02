@@ -67,7 +67,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             _applicationRegistration = applicationRegistration;
         }
 
-        public static async Task<KcpNetworkConnection> ConnectAsync(EndPoint remoteEndPoint, int sendQueueSize, KcpNetworkConnectionOptions? options, CancellationToken cancellationToken)
+        public static async Task<KcpNetworkConnection> ConnectAsync(EndPoint remoteEndPoint, int sendQueueSize, KcpNetworkConnectionOptions? options = null, CancellationToken cancellationToken = default)
         {
             KcpSocketNetworkTransport? socketTransport = new KcpSocketNetworkTransport(options?.Mtu ?? 1400, options?.BufferPool);
             KcpNetworkConnection? networkConnection = null;
@@ -129,7 +129,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
         }
 
-        public ValueTask<bool> NegotiateAsync(IKcpConnectionNegotiationContext negotiationContext, CancellationToken cancellationToken)
+        public ValueTask<bool> NegotiateAsync(IKcpConnectionNegotiationContext negotiationContext, CancellationToken cancellationToken = default)
         {
             CheckAndChangeStateTo(KcpNetworkConnectionState.None, KcpNetworkConnectionState.Connecting);
             Debug.Assert(_negotiationOperation is null);
@@ -326,7 +326,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             return default;
         }
 
-        public ValueTask SendPacketWithPreBufferAsync(Memory<byte> packet, CancellationToken cancellationToken)
+        public ValueTask SendPacketWithPreBufferAsync(Memory<byte> packet, CancellationToken cancellationToken = default)
         {
             if (cancellationToken.IsCancellationRequested)
             {

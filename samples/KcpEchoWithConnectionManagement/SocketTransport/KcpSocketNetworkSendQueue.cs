@@ -408,10 +408,11 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
 
                     if (_endPoint is not null)
                     {
+                        CancellationToken cancellationToken = _cancellationToken;
+                        ClearParameters();
+
                         if (_isAsyncMode)
                         {
-                            CancellationToken cancellationToken = _cancellationToken;
-                            ClearParameters();
                             _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
                         }
                         else if (_isDetached)
@@ -496,9 +497,9 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                         return;
                     }
 
+                    ClearParameters();
                     if (_isAsyncMode)
                     {
-                        ClearParameters();
                         _mrvtsc.SetResult(true);
                         return;
                     }

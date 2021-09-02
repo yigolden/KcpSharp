@@ -171,7 +171,7 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                     {
                         continue;
                     }
-                    IKcpNetworkApplication? application = LookupApplication(remoteEndPoint);
+                    IKcpNetworkApplication? application = LookupApplication(result.RemoteEndPoint);
                     if (application is not null)
                     {
                         await application.InputPacketAsync(rentedBuffer.Memory.Slice(0, result.ReceivedBytes), result.RemoteEndPoint, cancellationToken).ConfigureAwait(false);
