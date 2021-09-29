@@ -734,6 +734,10 @@ namespace KcpSharp
                     {
                         await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                     catch (Exception ex)
                     {
                         if (!HandleFlushException(ex))
