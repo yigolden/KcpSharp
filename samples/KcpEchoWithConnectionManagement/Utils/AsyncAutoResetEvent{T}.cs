@@ -1,23 +1,25 @@
-﻿using System.Threading.Tasks.Sources;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks.Sources;
 
-namespace KcpEchoWithConnectionManagement.NetworkConnection
+namespace KcpEchoWithConnectionManagement
 {
-    internal sealed class AsyncAutoResetEvent : IValueTaskSource
+    internal sealed class AsyncAutoResetEvent<T> : IValueTaskSource<T>
     {
-        private ManualResetValueTaskSourceCore<bool> _mrvts;
+        private ManualResetValueTaskSourceCore<T> _mrvts;
 
         private bool _isWaiting;
         private bool _isAvailable;
+        private T _value;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvts.GetStatus(token);
-        void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvts.OnCompleted(continuation, state, token, flags);
-        void IValueTaskSource.GetResult(short token)
+        ValueTaskSourceStatus IValueTaskSource<T>.GetStatus(short token) => _mrvts.GetStatus(token);
+        void IValueTaskSource<T>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvts.OnCompleted(continuation, state, token, flags);
+        T IValueTaskSource<T>.GetResult(short token)
         {
             try
             {
-                _mrvts.GetResult(token);
+                return _mrvts.GetResult(token);
             }
             finally
             {
@@ -32,29 +34,32 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         public AsyncAutoResetEvent()
         {
-            _mrvts = new ManualResetValueTaskSourceCore<bool>
+            _mrvts = new ManualResetValueTaskSourceCore<T>
             {
                 RunContinuationsAsynchronously = true
             };
+            _value = default!;
         }
 
-        public ValueTask WaitAsync(CancellationToken cancellationToken)
+        public ValueTask<T> WaitAsync(CancellationToken cancellationToken)
         {
             short token;
             lock (this)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return ValueTask.FromCanceled(cancellationToken);
+                    return ValueTask.FromCanceled<T>(cancellationToken);
                 }
                 if (_isWaiting)
                 {
-                    return ValueTask.FromException(new InvalidOperationException());
+                    return ValueTask.FromException<T>(new InvalidOperationException());
                 }
                 if (_isAvailable)
                 {
+                    T value = _value;
                     _isAvailable = false;
-                    return default;
+                    _value = default!;
+                    return new ValueTask<T>(value);
                 }
 
                 _isWaiting = true;
@@ -62,8 +67,30 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 token = _mrvts.Version;
             }
 
-            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((AsyncAutoResetEvent?)state)!.SetCanceled(), this);
-            return new ValueTask(this, token);
+            _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((AsyncAutoResetEvent<T>?)state)!.SetCanceled(), this);
+            return new ValueTask<T>(this, token);
+        }
+
+        public bool TryGet([MaybeNullWhen(false)] out T value)
+        {
+            lock (this)
+            {
+                if (_isWaiting)
+                {
+                    throw new InvalidOperationException();
+                }
+                if (_isAvailable)
+                {
+                    value = _value;
+                    _value = default!;
+                    _isAvailable = false;
+                    return true;
+                }
+
+                value = default;
+                return false;
+            }
+
         }
 
         private void SetCanceled()
@@ -85,32 +112,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
         private void ClearPreviousOperation()
         {
+            _value = default!;
             _cancellationToken = default;
             _cancellationRegistration.Dispose();
             _cancellationRegistration = default;
         }
 
-        public bool TryWait()
-        {
-            lock (this)
-            {
-                if (_isWaiting)
-                {
-                    throw new InvalidOperationException();
-                }
-                if (_isAvailable)
-                {
-                    _isAvailable = false;
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-        }
-
-        public bool TrySet()
+        public bool TrySet(T value)
         {
             lock (this)
             {
@@ -123,7 +131,12 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
 
                 if (_isWaiting)
                 {
-                    _mrvts.SetResult(true);
+                    ClearPreviousOperation();
+                    _mrvts.SetResult(value);
+                }
+                else
+                {
+                    _value = value;
                 }
                 return true;
             }

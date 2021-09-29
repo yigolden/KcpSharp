@@ -8,18 +8,20 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
     {
         private readonly KcpNetworkConnection _networkConnection;
         private readonly IKcpConnectionKeepAliveContext? _keepAliveContext;
+        private readonly TimeSpan _expireTimeout;
         private uint _remoteNextSerial;
         private uint _lastSerial;
 
         private Timer? _timer;
         private int _isOperationActive;
         private bool _isDisposed;
+        private bool _isDead;
 
-        public KcpNetworkConnectionKeepAliveHandler(KcpNetworkConnection networkConnection, IKcpConnectionKeepAliveContext? keepAliveContext, TimeSpan? interval)
+        public KcpNetworkConnectionKeepAliveHandler(KcpNetworkConnection networkConnection, IKcpConnectionKeepAliveContext? keepAliveContext, TimeSpan? interval, TimeSpan expireTimeout)
         {
             _networkConnection = networkConnection;
             _keepAliveContext = keepAliveContext;
-
+            _expireTimeout = expireTimeout;
             if (interval.HasValue)
             {
                 _timer = new Timer(state =>
@@ -136,10 +138,18 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
             try
             {
-                if (_isDisposed)
+                if (_isDisposed || _isDead)
                 {
                     return;
                 }
+
+                DateTime threshold = DateTime.UtcNow - _expireTimeout;
+                if (_networkConnection.TrySetToDead(threshold))
+                {
+                    _isDead = true;
+                    _timer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                }
+
                 (uint serial, uint packetsReceived) = _networkConnection.GatherPacketStatistics();
                 ProduceKeepAlivePacket(serial, packetsReceived);
             }

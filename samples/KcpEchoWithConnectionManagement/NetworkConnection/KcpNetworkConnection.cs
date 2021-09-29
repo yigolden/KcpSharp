@@ -165,13 +165,13 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             }
         }
 
-        public void SetupKeepAlive(TimeSpan interval)
-            => SetupKeepAliveCore(null, interval);
+        public void SetupKeepAlive(TimeSpan interval, TimeSpan expireTimeout)
+            => SetupKeepAliveCore(null, interval, expireTimeout);
 
-        public void SetupKeepAlive(IKcpConnectionKeepAliveContext keepAliveContext, TimeSpan interval)
-            => SetupKeepAliveCore(keepAliveContext, interval);
+        public void SetupKeepAlive(IKcpConnectionKeepAliveContext keepAliveContext, TimeSpan interval, TimeSpan expireTimeout)
+            => SetupKeepAliveCore(keepAliveContext, interval, expireTimeout);
 
-        private void SetupKeepAliveCore(IKcpConnectionKeepAliveContext? keepAliveContext, TimeSpan? interval)
+        private void SetupKeepAliveCore(IKcpConnectionKeepAliveContext? keepAliveContext, TimeSpan? interval, TimeSpan expireTimeout)
         {
             if (_state != KcpNetworkConnectionState.Connected)
             {
@@ -181,16 +181,23 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
             {
                 ThrowInvalidOperationException();
             }
-            _keepAliveHandler = new KcpNetworkConnectionKeepAliveHandler(this, keepAliveContext, interval);
+            _keepAliveHandler = new KcpNetworkConnectionKeepAliveHandler(this, keepAliveContext, interval, expireTimeout);
         }
 
-        public void SendKeepAlive()
+        internal bool TrySetToDead(DateTime threshold)
         {
             if (_state != KcpNetworkConnectionState.Connected)
             {
-                return;
+                return true;
             }
-            _keepAliveHandler?.Send();
+
+            if (DateTime.FromBinary(Interlocked.Read(ref _lastActiveTimeTicks)) < threshold)
+            {
+                ChangeStateTo(KcpNetworkConnectionState.Dead);
+                return true;
+            }
+
+            return false;
         }
 
         internal (uint nextRemoteSerial, uint packetsReceived) GatherPacketStatistics()

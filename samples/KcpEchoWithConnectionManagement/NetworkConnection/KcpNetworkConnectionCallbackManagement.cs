@@ -161,7 +161,7 @@ namespace KcpEchoWithConnectionManagement.NetworkConnection
                 T state = _state;
                 if (callback is not null && !Volatile.Read(ref _disposed))
                 {
-                    callback.NotifyStateChanged(connection, _state);
+                    callback.NotifyStateChanged(connection, state);
                 }
             }
 

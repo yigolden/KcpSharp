@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks.Sources;
 using KcpSharp;
 
@@ -11,15 +12,15 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
         private readonly IKcpBufferPool _bufferPool;
         private readonly Socket _socket;
         private readonly int _capacity;
-
-        private int _operationCount;
-        private int _loopActive;
+        private CancellationTokenSource? _cts;
         private bool _disposed;
-        private readonly LinkedList<SendOperation> _queue;
-        private readonly LinkedList<SendOperation> _cache;
 
-        private SpinLock _cacheLock;
-        private int _nextId;
+        private readonly AsyncAutoResetEvent<SendOperation?> _sendEvent = new();
+        private readonly object _queueLock = new object();
+        private SimpleLinkedList<SendOperation> _queue = new();
+
+        private readonly SimpleLinkedList<SendOperation> _cache = new();
+        private int _operationCount;
 
         public KcpSocketNetworkSendQueue(IKcpBufferPool bufferPool, Socket socket, int capacity)
         {
@@ -27,20 +28,199 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             _socket = socket;
             _capacity = capacity;
 
-            _queue = new LinkedList<SendOperation>();
-            _cache = new LinkedList<SendOperation>();
+            _cts = new CancellationTokenSource();
+            _ = Task.Run(() => SendLoop(_cts.Token));
         }
 
-        private int GetNextId()
+        private async Task SendLoop(CancellationToken cancellationToken)
         {
-            while (true)
+            SendOperation? sendOperation;
+            while (!cancellationToken.IsCancellationRequested)
             {
-                int id = Interlocked.Increment(ref _nextId);
-                if (id != 0)
+                // wait
+                try
                 {
-                    return id;
+                    sendOperation = await _sendEvent.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (sendOperation is null)
+                {
+                    break;
+                }
+
+                // send
+                bool succeed = false;
+                try
+                {
+                    await sendOperation.SendAsync(_socket, cancellationToken).ConfigureAwait(false);
+                    succeed = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                    // TODO log and ignore
+                }
+                finally
+                {
+                    sendOperation.NotifySendComplete(succeed);
+                }
+
+                // consumed queue and send
+                while (true)
+                {
+                    SimpleLinkedListNode<SendOperation>? node;
+                    lock (_queueLock)
+                    {
+                        node = _queue.First;
+                        if (node is null)
+                        {
+                            break;
+                        }
+
+                        _queue.Remove(node);
+                    }
+
+                    succeed = false;
+                    try
+                    {
+                        await node.Value.SendAsync(_socket, cancellationToken).ConfigureAwait(false);
+                        succeed = true;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                        // TODO log and ignore
+                    }
+                    finally
+                    {
+                        node.Value.NotifySendComplete(succeed);
+                    }
                 }
             }
+
+            if (_sendEvent.TryGet(out sendOperation))
+            {
+                sendOperation?.Dispose();
+            }
+
+            // consume queue and dispose
+            while (true)
+            {
+                SimpleLinkedListNode<SendOperation>? node;
+                lock (_queueLock)
+                {
+                    node = _queue.First;
+                    if (node is null)
+                    {
+                        break;
+                    }
+                    _queue.Remove(node);
+                }
+
+                node.Value.Dispose();
+            }
+        }
+
+        public bool Queue(ReadOnlySpan<byte> packet, EndPoint endPoint)
+        {
+            if (packet.IsEmpty)
+            {
+                return false;
+            }
+
+            SendOperation? operation = AcquireFreeOperation();
+            if (operation is null)
+            {
+                return default;
+            }
+
+            operation.SetPacket(_bufferPool, packet, endPoint);
+
+            if (_sendEvent.TrySet(operation))
+            {
+                if (_disposed)
+                {
+                    if (_sendEvent.TryGet(out operation))
+                    {
+                        operation?.Dispose();
+                    }
+                    return false;
+                }
+            }
+            else
+            {
+                lock (_queueLock)
+                {
+                    if (_disposed)
+                    {
+                        operation.Dispose();
+                        return false;
+                    }
+
+                    _queue.AddLast(operation.Node);
+                }
+            }
+
+            return true;
+        }
+
+        public ValueTask SendAsync(ReadOnlyMemory<byte> packet, EndPoint endPoint, CancellationToken cancellationToken)
+        {
+            if (packet.IsEmpty)
+            {
+                return default;
+            }
+
+            SendOperation? operation = AcquireFreeOperation();
+            if (operation is null)
+            {
+                return default;
+            }
+
+            ValueTask task = operation.SetPacketAndWaitAsync(packet, endPoint, cancellationToken);
+            if (task.IsCompleted)
+            {
+                return task;
+            }
+
+            if (_sendEvent.TrySet(operation))
+            {
+                if (_disposed)
+                {
+                    if (_sendEvent.TryGet(out operation))
+                    {
+                        operation?.Dispose();
+                    }
+                }
+            }
+            else
+            {
+                lock (_queueLock)
+                {
+                    if (_disposed)
+                    {
+                        operation.Dispose();
+                    }
+                    else
+                    {
+                        _queue.AddLast(operation.Node);
+                    }
+                }
+            }
+
+            return task;
         }
 
         private SendOperation? AcquireFreeOperation()
@@ -51,25 +231,20 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                 return null;
             }
 
-            LinkedListNode<SendOperation>? node;
+            SimpleLinkedListNode<SendOperation>? node;
             SendOperation operation;
 
-            bool lockTaken = false;
-            try
+            lock (_cache)
             {
-                _cacheLock.Enter(ref lockTaken);
-
+                if (_disposed)
+                {
+                    Interlocked.Decrement(ref _operationCount);
+                    return null;
+                }
                 node = _cache.First;
                 if (node is not null)
                 {
                     _cache.Remove(node);
-                }
-            }
-            finally
-            {
-                if (lockTaken)
-                {
-                    _cacheLock.Exit();
                 }
             }
 
@@ -85,128 +260,33 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             return operation;
         }
 
-        public bool Queue(ReadOnlySpan<byte> packet, EndPoint endPoint)
-        {
-            SendOperation? operation = AcquireFreeOperation();
-            if (operation is null)
-            {
-                return false;
-            }
-
-            operation.SetPacket(_bufferPool, packet, endPoint);
-
-            // create loop thread or add to the queue
-            lock (_queue)
-            {
-                _queue.AddLast(operation.Node);
-
-                if (_loopActive == 0)
-                {
-                    _loopActive = GetNextId();
-
-                    _ = Task.Run(() => SendLoopAsync(_loopActive), CancellationToken.None);
-                }
-            }
-
-            return true;
-        }
-
-        public ValueTask SendAsync(ReadOnlyMemory<byte> packet, EndPoint endPoint, CancellationToken cancellationToken)
-        {
-            SendOperation? operation = AcquireFreeOperation();
-            if (operation is null)
-            {
-                return default;
-            }
-
-            ValueTask task = operation.SetPacketAndWaitAsync(packet, endPoint, cancellationToken);
-            if (task.IsCompleted)
-            {
-                return task;
-            }
-
-            // create loop thread or add to the queue
-            lock (_queue)
-            {
-                _queue.AddLast(operation.Node);
-
-                if (_loopActive == 0)
-                {
-                    _loopActive = GetNextId();
-
-                    _ = Task.Run(() => SendLoopAsync(_loopActive), CancellationToken.None);
-                }
-            }
-
-            return task;
-        }
-
-        private void ReturnOperation(SendOperation operation)
+        private void ReturnOperationNode(SendOperation operation, bool isAborted)
         {
             if (_disposed)
             {
                 return;
             }
 
-            bool lockTaken = false;
-            try
-            {
-                _cacheLock.Enter(ref lockTaken);
+            Interlocked.Decrement(ref _operationCount);
 
-                _cache.AddLast(operation.Node);
-            }
-            finally
+            bool shouldCache = true;
+
+            if (isAborted)
             {
-                if (lockTaken)
+                lock (_queueLock)
                 {
-                    _cacheLock.Exit();
-                }
-            }
-        }
-
-        private async Task SendLoopAsync(int id)
-        {
-            Debug.Assert(_loopActive == id);
-            try
-            {
-                while (!_disposed)
-                {
-                    LinkedListNode<SendOperation>? node;
-
-                    lock (_queue)
+                    if (!_queue.TryRemove(operation.Node))
                     {
-                        node = _queue.First;
-
-                        if (node is null)
-                        {
-                            _loopActive = 0;
-                            return;
-                        }
-                        else
-                        {
-                            _queue.Remove(node);
-                        }
-                    }
-
-                    try
-                    {
-                        await node.Value.SendAsync(_socket).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        Interlocked.Decrement(ref _operationCount);
-                        node.Value.NotifySendComplete();
+                        shouldCache = false;
                     }
                 }
             }
-            finally
+
+            if (shouldCache)
             {
-                lock (_queue)
+                lock (_cache)
                 {
-                    if (_loopActive == id)
-                    {
-                        _loopActive = 0;
-                    }
+                    _cache.AddLast(operation.Node);
                 }
             }
         }
@@ -217,91 +297,78 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
             {
                 return;
             }
-            _disposed = true;
+            Volatile.Write(ref _disposed, true);
 
-            lock (_queue)
+            _sendEvent.TrySet(null);
+
+            CancellationTokenSource? cts = Interlocked.Exchange(ref _cts, null);
+            if (cts is not null)
             {
-                foreach (SendOperation operation in _queue)
-                {
-                    operation.SetDisposed();
-                }
-
-                _queue.Clear();
-            }
-
-            bool lockTaken = false;
-            try
-            {
-                _cacheLock.Enter(ref lockTaken);
-
-                _cache.Clear();
-            }
-            finally
-            {
-                if (lockTaken)
-                {
-                    _cacheLock.Exit();
-                }
+                cts.Cancel();
+                cts.Dispose();
             }
         }
 
-        class SendOperation : IValueTaskSource
+
+        class SendOperation : IValueTaskSource, IDisposable
         {
             private readonly KcpSocketNetworkSendQueue _queue;
-            private LinkedListNode<SendOperation> _node;
+            private readonly SimpleLinkedListNode<SendOperation> _node;
             private ManualResetValueTaskSourceCore<bool> _mrvtsc;
-            private SpinLock _lock;
+            private object _lock = new object();
 
-            private bool _isAsyncMode;
-            private bool _isDetached;
+            private bool _isAsyncActive;
+            private bool _isAborted;
             private EndPoint? _endPoint;
-            private KcpRentedBuffer _rentedBuffer;
-            private ReadOnlyMemory<byte> _buffer;
+            private KcpRentedBuffer _buffer;
             private CancellationToken _cancellationToken;
             private CancellationTokenRegistration _cancellationRegistration;
 
-            public LinkedListNode<SendOperation> Node => _node;
-
-            ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
-            void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-                => _mrvtsc.OnCompleted(continuation, state, token, flags);
-            void IValueTaskSource.GetResult(short token)
-            {
-                bool lockTaken = false;
-                try
-                {
-                    _lock.Enter(ref lockTaken);
-
-                    _mrvtsc.GetStatus(token);
-                }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
-                    }
-
-                    _mrvtsc.Reset();
-
-                    if (_isDetached)
-                    {
-                        _isDetached = false;
-                        _queue.ReturnOperation(this);
-                    }
-                }
-            }
+            public SimpleLinkedListNode<SendOperation> Node => _node;
 
             public SendOperation(KcpSocketNetworkSendQueue queue)
             {
                 _queue = queue;
-                _node = new LinkedListNode<SendOperation>(this);
+                _node = new SimpleLinkedListNode<SendOperation>(this);
                 _mrvtsc = new ManualResetValueTaskSourceCore<bool>
                 {
                     RunContinuationsAsynchronously = true
                 };
             }
 
-            public void SetPacket(IKcpBufferPool bufferPool, ReadOnlySpan<byte> packet, EndPoint remoteEndPoint)
+            public ValueTaskSourceStatus GetStatus(short token) => _mrvtsc.GetStatus(token);
+            public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
+            public void GetResult(short token)
+            {
+                try
+                {
+                    _mrvtsc.GetResult(token);
+                }
+                finally
+                {
+                    _mrvtsc.Reset();
+
+                    bool isAsyncActive;
+                    bool isAborted;
+                    lock (_node)
+                    {
+                        isAsyncActive = _isAsyncActive;
+                        isAborted = _isAborted;
+                        if (isAsyncActive)
+                        {
+                            _isAsyncActive = false;
+                            _isAborted = false;
+                        }
+                    }
+
+                    if (isAsyncActive)
+                    {
+                        _queue.ReturnOperationNode(this, isAborted);
+                    }
+                }
+            }
+
+            public void SetPacket(IKcpBufferPool bufferPool, ReadOnlySpan<byte> packet, EndPoint _remoteEndPoint)
             {
                 if (packet.IsEmpty)
                 {
@@ -309,39 +376,27 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                 }
 
                 KcpRentedBuffer rentedBuffer = bufferPool.Rent(new KcpBufferPoolRentOptions(packet.Length, true));
-
-                bool lockTaken = false;
                 try
                 {
-                    _lock.Enter(ref lockTaken);
-
-                    if (_endPoint is not null)
+                    lock (_node)
                     {
-                        throw new InvalidOperationException();
+                        Debug.Assert(!_isAsyncActive && _endPoint is null);
+
+                        packet.CopyTo(rentedBuffer.Span);
+
+                        _endPoint = _remoteEndPoint;
+                        _buffer = rentedBuffer.Slice(0, packet.Length);
+                        Debug.Assert(_cancellationToken == default);
+                        Debug.Assert(_cancellationRegistration == default);
+                        Debug.Assert(!_isAborted);
+
+                        rentedBuffer = default;
                     }
-
-                    Memory<byte> memory = rentedBuffer.Memory.Slice(0, packet.Length);
-                    packet.CopyTo(memory.Span);
-
-                    Debug.Assert(_endPoint is null);
-                    _isAsyncMode = false;
-                    _isDetached = true;
-                    _endPoint = remoteEndPoint;
-                    _rentedBuffer = rentedBuffer;
-                    _buffer = memory;
-                    _cancellationToken = default;
-
-                    rentedBuffer = default;
                 }
                 finally
                 {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
-                    }
                     rentedBuffer.Dispose();
                 }
-
             }
 
             public ValueTask SetPacketAndWaitAsync(ReadOnlyMemory<byte> packet, EndPoint remoteEndPoint, CancellationToken cancellationToken)
@@ -355,43 +410,30 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
                     return default;
                 }
 
-                bool lockTaken = false;
-                try
+                short token;
+                lock (_node)
                 {
-                    _lock.Enter(ref lockTaken);
+                    Debug.Assert(!_isAsyncActive && _endPoint is null);
 
-                    if (_endPoint is not null)
-                    {
-                        return ValueTask.FromException(new InvalidOperationException());
-                    }
-                    Debug.Assert(_endPoint is null);
-                    _isAsyncMode = true;
-                    _isDetached = true;
+                    _isAsyncActive = true;
                     _endPoint = remoteEndPoint;
-                    _rentedBuffer = default;
-                    _buffer = packet;
+                    _buffer = KcpRentedBuffer.FromMemory(MemoryMarshal.AsMemory(packet));
                     _cancellationToken = cancellationToken;
+                    Debug.Assert(!_isAborted);
 
-                    return new ValueTask(this, _mrvtsc.Version);
+                    token = _mrvtsc.Version;
                 }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
 
-                        _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((SendOperation?)state)!.SetCanceled(), this);
-                    }
-                }
+                _cancellationRegistration = cancellationToken.UnsafeRegister(state => ((SendOperation?)state)!.SetCanceled(), this);
+
+                return new ValueTask(this, token);
             }
 
-            private void ClearParameters()
+            private void ClearPreviousOperation()
             {
                 Debug.Assert(_endPoint is not null);
-                _isAsyncMode = false;
                 _endPoint = null;
-                _rentedBuffer.Dispose();
-                _rentedBuffer = default;
+                _buffer.Dispose();
                 _buffer = default;
                 _cancellationToken = default;
                 _cancellationRegistration.Dispose();
@@ -400,125 +442,76 @@ namespace KcpEchoWithConnectionManagement.SocketTransport
 
             private void SetCanceled()
             {
-                bool lockTaken = false;
-                bool shouldReturn = false;
-                try
+                lock (_node)
                 {
-                    _lock.Enter(ref lockTaken);
-
                     if (_endPoint is not null)
                     {
+                        Debug.Assert(_isAsyncActive);
+
                         CancellationToken cancellationToken = _cancellationToken;
-                        ClearParameters();
-
-                        if (_isAsyncMode)
-                        {
-                            _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
-                        }
-                        else if (_isDetached)
-                        {
-                            _isDetached = false;
-                            shouldReturn = true;
-                        }
+                        ClearPreviousOperation();
+                        _isAborted = true;
+                        _mrvtsc.SetException(new OperationCanceledException(cancellationToken));
                     }
-                }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
-                    }
-                }
-
-                if (shouldReturn)
-                {
-                    _queue.ReturnOperation(this);
                 }
             }
 
-            public void SetDisposed()
+            public void Dispose()
             {
-                bool lockTaken = false;
-                try
+                lock (_lock)
                 {
-                    _lock.Enter(ref lockTaken);
-
                     if (_endPoint is not null)
                     {
-                        bool isAsyncMode = _isAsyncMode;
-                        ClearParameters();
-                        if (isAsyncMode)
+                        ClearPreviousOperation();
+                        if (_isAsyncActive)
                         {
                             _mrvtsc.SetResult(false);
                         }
                     }
                 }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
-                    }
-                }
             }
 
-            public ValueTask<int> SendAsync(Socket socket)
+            public ValueTask<int> SendAsync(Socket socket, CancellationToken cancellationToken)
             {
-                bool lockTaken = false;
-                try
+                lock (_node)
                 {
-                    _lock.Enter(ref lockTaken);
-
-                    if (_endPoint is null)
+                    EndPoint? endPoint = _endPoint;
+                    if (endPoint is null)
                     {
                         return default;
                     }
 
-                    return socket.SendToAsync(_buffer, SocketFlags.None, _endPoint, _cancellationToken);
-                }
-                finally
-                {
-                    if (lockTaken)
-                    {
-                        _lock.Exit();
-                    }
+                    return socket.SendToAsync(_buffer.Memory, SocketFlags.None, endPoint, cancellationToken);
                 }
             }
 
-            public void NotifySendComplete()
+            public void NotifySendComplete(bool succeeded)
             {
-                bool lockTaken = false;
-                try
+                bool shouldReturnNode = false;
+                lock (_node)
                 {
-                    _lock.Enter(ref lockTaken);
-
                     if (_endPoint is null)
                     {
                         return;
                     }
 
-                    ClearParameters();
-                    if (_isAsyncMode)
+                    ClearPreviousOperation();
+                    if (_isAsyncActive)
                     {
-                        _mrvtsc.SetResult(true);
-                        return;
+                        _mrvtsc.SetResult(succeeded);
                     }
-                }
-                finally
-                {
-                    if (lockTaken)
+                    else
                     {
-                        _lock.Exit();
+                        shouldReturnNode = true;
                     }
                 }
 
-                if (_isDetached)
+                if (shouldReturnNode)
                 {
-                    _isDetached = false;
-                    _queue.ReturnOperation(this);
+                    _queue.ReturnOperationNode(this, false);
                 }
             }
-        }
 
+        }
     }
 }
