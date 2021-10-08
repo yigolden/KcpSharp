@@ -30,7 +30,8 @@ namespace KcpSharp
         private bool _transportClosed;
         private bool _disposed;
 
-        private bool _operationOngoing;
+        private bool _activeWait;
+        private bool _signled;
         private bool _forStream;
         private byte _operationMode; // 0-send 1-flush 2-wait for space
         private ReadOnlyMemory<byte> _buffer;
@@ -56,12 +57,47 @@ namespace KcpSharp
             _queue = new LinkedListOfQueueItem();
         }
 
-        bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
+        bool IValueTaskSource<bool>.GetResult(short token)
+        {
+            _cancellationRegistration.Dispose();
+            try
+            {
+                return _mrvtsc.GetResult(token);
+            }
+            finally
+            {
+                _mrvtsc.Reset();
+                lock (_queue)
+                {
+                    _activeWait = false;
+                    _signled = false;
+                    _cancellationRegistration = default;
+                }
+            }
+        }
+
         ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
-        void IValueTaskSource.GetResult(short token) => _mrvtsc.GetResult(token);
+        void IValueTaskSource.GetResult(short token)
+        {
+            try
+            {
+                _mrvtsc.GetResult(token);
+            }
+            finally
+            {
+                _mrvtsc.Reset();
+                lock (_queue)
+                {
+                    _activeWait = false;
+                    _signled = false;
+                    _cancellationRegistration = default;
+                }
+            }
+        }
+
         ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _mrvtsc.OnCompleted(continuation, state, token, flags);
@@ -76,7 +112,7 @@ namespace KcpSharp
                     segmentCount = 0;
                     return false;
                 }
-                if (_operationOngoing && _operationMode == 0)
+                if (_activeWait && _operationMode == 0)
                 {
                     byteCount = 0;
                     segmentCount = 0;
@@ -129,7 +165,7 @@ namespace KcpSharp
                 {
                     return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumSegments))));
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -143,8 +179,8 @@ namespace KcpSharp
                     return new ValueTask<bool>(true);
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signled);
                 _forStream = false;
                 _operationMode = 2;
                 _waitForByteCount = minimumBytes;
@@ -259,7 +295,7 @@ namespace KcpSharp
                 {
                     return new ValueTask<bool>(false);
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -320,8 +356,8 @@ namespace KcpSharp
                     return new ValueTask<bool>(true);
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signled);
                 _forStream = false;
                 _operationMode = 0;
                 _buffer = buffer;
@@ -343,7 +379,7 @@ namespace KcpSharp
                 {
                     return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedForStreamException()));
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -398,8 +434,8 @@ namespace KcpSharp
                     return default;
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signled);
                 _forStream = true;
                 _operationMode = 0;
                 _buffer = buffer;
@@ -421,7 +457,7 @@ namespace KcpSharp
                 {
                     return new ValueTask<bool>(false);
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -430,8 +466,8 @@ namespace KcpSharp
                     return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signled);
                 _forStream = false;
                 _operationMode = 1;
                 _buffer = default;
@@ -453,7 +489,7 @@ namespace KcpSharp
                 {
                     return new ValueTask(Task.FromException(ThrowHelper.NewTransportClosedForStreamException()));
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask(Task.FromException(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -462,8 +498,8 @@ namespace KcpSharp
                     return new ValueTask(Task.FromCanceled(cancellationToken));
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signled);
                 _forStream = true;
                 _operationMode = 1;
                 _buffer = default;
@@ -480,7 +516,7 @@ namespace KcpSharp
         {
             lock (_queue)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetException(ThrowHelper.NewOperationCanceledExceptionForCancelPendingSend(innerException, cancellationToken));
@@ -494,7 +530,7 @@ namespace KcpSharp
         {
             lock (_queue)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signled)
                 {
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperation();
@@ -505,15 +541,13 @@ namespace KcpSharp
 
         private void ClearPreviousOperation()
         {
-            _operationOngoing = false;
+            _signled = true;
             _forStream = false;
             _operationMode = 0;
             _buffer = default;
             _waitForByteCount = default;
             _waitForSegmentCount = default;
             _cancellationToken = default;
-            _cancellationRegistration.Dispose();
-            _cancellationRegistration = default;
         }
 
         public bool TryDequeue(out KcpBuffer data, out byte fragment)
@@ -557,7 +591,7 @@ namespace KcpSharp
 
         private void MoveOneSegmentIn()
         {
-            if (_operationOngoing && _operationMode == 0)
+            if (_activeWait && !_signled && _operationMode == 0)
             {
                 ReadOnlyMemory<byte> buffer = _buffer;
                 int mss = _mss;
@@ -581,7 +615,7 @@ namespace KcpSharp
 
         private void CheckForAvailableSpace()
         {
-            if (_operationOngoing && _operationMode == 2)
+            if (_activeWait && !_signled && _operationMode == 2)
             {
                 GetAvailableSpaceCore(out int byteCount, out int segmentCount);
                 if (byteCount >= _waitForByteCount && segmentCount >= _waitForSegmentCount)
@@ -594,7 +628,7 @@ namespace KcpSharp
 
         private void TryCompleteFlush(long unflushedBytes)
         {
-            if (_operationOngoing && _operationMode == 1)
+            if (_activeWait && !_signled && _operationMode == 1)
             {
                 if (_queue.Last is null && unflushedBytes == 0 && !_ackListNotEmpty)
                 {
@@ -633,7 +667,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signled)
                 {
                     if (_forStream)
                     {
@@ -659,7 +693,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signled)
                 {
                     if (_forStream)
                     {

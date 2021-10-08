@@ -44,6 +44,7 @@ namespace KcpSharp.Tests
                 foreach (byte[] packet in packets)
                 {
                     Assert.True(await conversation.SendAsync(packet, cancellationToken));
+                    await Task.Delay(50, cancellationToken);
                 }
             }
 

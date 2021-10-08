@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
@@ -13,7 +14,8 @@ namespace KcpSharp
         private bool _transportClosed;
         private bool _disposed;
 
-        private bool _operationOngoing;
+        private bool _activeWait;
+        private bool _signaled;
         private ReadOnlyMemory<byte> _buffer;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
@@ -28,7 +30,25 @@ namespace KcpSharp
             };
         }
 
-        bool IValueTaskSource<bool>.GetResult(short token) => _mrvtsc.GetResult(token);
+        bool IValueTaskSource<bool>.GetResult(short token)
+        {
+            _cancellationRegistration.Dispose();
+            try
+            {
+                return _mrvtsc.GetResult(token);
+            }
+            finally
+            {
+                _mrvtsc.Reset();
+                lock (this)
+                {
+                    _activeWait = false;
+                    _signaled = false;
+                    _cancellationRegistration = default;
+                }
+            }
+        }
+
         ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
@@ -41,7 +61,7 @@ namespace KcpSharp
                 {
                     return new ValueTask<bool>(false);
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewConcurrentSendException()));
                 }
@@ -50,8 +70,8 @@ namespace KcpSharp
                     return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signaled);
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
                 token = _mrvtsc.Version;
@@ -67,7 +87,7 @@ namespace KcpSharp
         {
             lock (this)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetException(ThrowHelper.NewOperationCanceledExceptionForCancelPendingSend(innerException, cancellationToken));
@@ -81,7 +101,7 @@ namespace KcpSharp
         {
             lock (this)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperation();
@@ -92,11 +112,9 @@ namespace KcpSharp
 
         private void ClearPreviousOperation()
         {
-            _operationOngoing = false;
+            _signaled = true;
             _buffer = default;
             _cancellationToken = default;
-            _cancellationRegistration.Dispose();
-            _cancellationRegistration = default;
         }
 
         public bool TryConsume(Memory<byte> buffer, out int bytesWritten)
@@ -108,7 +126,7 @@ namespace KcpSharp
                     bytesWritten = 0;
                     return false;
                 }
-                if (!_operationOngoing)
+                if (!_activeWait)
                 {
                     bytesWritten = 0;
                     return false;
@@ -137,7 +155,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(false);
@@ -154,7 +172,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(false);

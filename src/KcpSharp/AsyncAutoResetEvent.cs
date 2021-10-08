@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
@@ -8,9 +9,11 @@ namespace KcpSharp
     internal class AsyncAutoResetEvent<T> : IValueTaskSource<T>
     {
         private ManualResetValueTaskSourceCore<T> _rvtsc;
-        private SpinLock _spin;
+        private SpinLock _lock;
         private bool _isSet;
-        private bool _isWaiting;
+        private bool _activeWait;
+        private bool _signaled;
+
         private T? _value;
 
         public AsyncAutoResetEvent()
@@ -19,10 +22,37 @@ namespace KcpSharp
             {
                 RunContinuationsAsynchronously = true
             };
-            _spin = new SpinLock();
+            _lock = new SpinLock();
         }
 
-        T IValueTaskSource<T>.GetResult(short token) => _rvtsc.GetResult(token);
+        T IValueTaskSource<T>.GetResult(short token)
+        {
+            try
+            {
+                return _rvtsc.GetResult(token);
+            }
+            finally
+            {
+                _rvtsc.Reset();
+
+                bool lockTaken = false;
+                try
+                {
+                    _lock.Enter(ref lockTaken);
+
+                    _activeWait = false;
+                    _signaled = false;
+                }
+                finally
+                {
+                    if (lockTaken)
+                    {
+                        _lock.Exit();
+                    }
+                }
+            }
+        }
+
         ValueTaskSourceStatus IValueTaskSource<T>.GetStatus(short token) => _rvtsc.GetStatus(token);
         void IValueTaskSource<T>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
             => _rvtsc.OnCompleted(continuation, state, token, flags);
@@ -32,9 +62,9 @@ namespace KcpSharp
             bool lockTaken = false;
             try
             {
-                _spin.Enter(ref lockTaken);
+                _lock.Enter(ref lockTaken);
 
-                if (_isWaiting)
+                if (_activeWait)
                 {
                     return new ValueTask<T>(Task.FromException<T>(new InvalidOperationException("Another thread is already waiting.")));
                 }
@@ -46,8 +76,8 @@ namespace KcpSharp
                     return new ValueTask<T>(value);
                 }
 
-                _rvtsc.Reset();
-                _isWaiting = true;
+                _activeWait = true;
+                Debug.Assert(!_signaled);
 
                 return new ValueTask<T>(this, _rvtsc.Version);
             }
@@ -55,7 +85,7 @@ namespace KcpSharp
             {
                 if (lockTaken)
                 {
-                    _spin.Exit();
+                    _lock.Exit();
                 }
             }
         }
@@ -65,11 +95,11 @@ namespace KcpSharp
             bool lockTaken = false;
             try
             {
-                _spin.Enter(ref lockTaken);
+                _lock.Enter(ref lockTaken);
 
-                if (_isWaiting)
+                if (_activeWait && !_signaled)
                 {
-                    _isWaiting = false;
+                    _signaled = true;
                     _rvtsc.SetResult(value);
                     return;
                 }
@@ -81,7 +111,7 @@ namespace KcpSharp
             {
                 if (lockTaken)
                 {
-                    _spin.Exit();
+                    _lock.Exit();
                 }
             }
         }

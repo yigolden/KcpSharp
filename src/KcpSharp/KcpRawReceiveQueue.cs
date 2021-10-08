@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
+using System.Diagnostics;
 
 #if NEED_LINKEDLIST_SHIM
 using LinkedListOfQueueItem = KcpSharp.NetstandardShim.LinkedList<KcpSharp.KcpBuffer>;
@@ -25,7 +26,8 @@ namespace KcpSharp
         private bool _transportClosed;
         private bool _disposed;
 
-        private bool _operationOngoing;
+        private bool _activeWait;
+        private bool _signaled;
         private bool _bufferProvided;
         private Memory<byte> _buffer;
         private CancellationToken _cancellationToken;
@@ -39,7 +41,25 @@ namespace KcpSharp
             _recycled = new LinkedListOfQueueItem();
         }
 
-        KcpConversationReceiveResult IValueTaskSource<KcpConversationReceiveResult>.GetResult(short token) => _mrvtsc.GetResult(token);
+        KcpConversationReceiveResult IValueTaskSource<KcpConversationReceiveResult>.GetResult(short token)
+        {
+            _cancellationRegistration.Dispose();
+            try
+            {
+                return _mrvtsc.GetResult(token);
+            }
+            finally
+            {
+                _mrvtsc.Reset();
+                lock (_queue)
+                {
+                    _activeWait = false;
+                    _signaled = false;
+                    _cancellationRegistration = default;
+                }
+            }
+        }
+
         ValueTaskSourceStatus IValueTaskSource<KcpConversationReceiveResult>.GetStatus(short token) => _mrvtsc.GetStatus(token);
         void IValueTaskSource<KcpConversationReceiveResult>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
@@ -52,7 +72,7 @@ namespace KcpSharp
                     result = default;
                     return false;
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     ThrowHelper.ThrowConcurrentReceiveException();
                 }
@@ -77,7 +97,7 @@ namespace KcpSharp
                 {
                     return default;
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewConcurrentReceiveException()));
                 }
@@ -92,8 +112,8 @@ namespace KcpSharp
                     return new ValueTask<KcpConversationReceiveResult>(new KcpConversationReceiveResult(first.ValueRef.Length));
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signaled);
                 _bufferProvided = false;
                 _buffer = default;
                 _cancellationToken = cancellationToken;
@@ -114,7 +134,7 @@ namespace KcpSharp
                     result = default;
                     return false;
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     ThrowHelper.ThrowConcurrentReceiveException();
                 }
@@ -152,7 +172,7 @@ namespace KcpSharp
                 {
                     return default;
                 }
-                if (_operationOngoing)
+                if (_activeWait)
                 {
                     return new ValueTask<KcpConversationReceiveResult>(Task.FromException<KcpConversationReceiveResult>(ThrowHelper.NewConcurrentReceiveException()));
                 }
@@ -180,8 +200,8 @@ namespace KcpSharp
                     return new ValueTask<KcpConversationReceiveResult>(new KcpConversationReceiveResult(length));
                 }
 
-                _mrvtsc.Reset();
-                _operationOngoing = true;
+                _activeWait = true;
+                Debug.Assert(!_signaled);
                 _bufferProvided = true;
                 _buffer = buffer;
                 _cancellationToken = cancellationToken;
@@ -197,7 +217,7 @@ namespace KcpSharp
         {
             lock (_queue)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetException(ThrowHelper.NewOperationCanceledExceptionForCancelPendingReceive(innerException, cancellationToken));
@@ -211,7 +231,7 @@ namespace KcpSharp
         {
             lock (_queue)
             {
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     CancellationToken cancellationToken = _cancellationToken;
                     ClearPreviousOperation();
@@ -222,12 +242,10 @@ namespace KcpSharp
 
         private void ClearPreviousOperation()
         {
-            _operationOngoing = false;
+            _signaled = true;
             _bufferProvided = false;
             _buffer = default;
             _cancellationToken = default;
-            _cancellationRegistration.Dispose();
-            _cancellationRegistration = default;
         }
 
         public void Enqueue(ReadOnlySpan<byte> buffer)
@@ -240,7 +258,7 @@ namespace KcpSharp
                 }
 
                 int queueSize = _queue.Count;
-                if (queueSize > 0 || !_operationOngoing)
+                if (queueSize > 0 || !_activeWait)
                 {
                     if (queueSize >= _capacity)
                     {
@@ -301,7 +319,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(default);
@@ -319,7 +337,7 @@ namespace KcpSharp
                 {
                     return;
                 }
-                if (_operationOngoing)
+                if (_activeWait && !_signaled)
                 {
                     ClearPreviousOperation();
                     _mrvtsc.SetResult(default);
