@@ -41,6 +41,8 @@ namespace KcpSharp
                     _items.Remove(node);
                     node.ValueRef = item;
                 }
+
+                node.ValueRef.Version++;
                 return node;
             }
             finally
@@ -59,7 +61,9 @@ namespace KcpSharp
             {
                 _lock.Enter(ref lockAcquired);
 
+                short version = node.ValueRef.Version;
                 node.ValueRef = default;
+                node.ValueRef.Version = (short)(version + 1);
                 _items.AddLast(node);
             }
             finally

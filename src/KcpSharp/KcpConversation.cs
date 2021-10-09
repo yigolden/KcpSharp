@@ -378,7 +378,7 @@ namespace KcpSharp
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
 
-            using KcpRentedBuffer bufferOwner = _bufferPool.Rent(new KcpBufferPoolRentOptions(_mtu, true));
+            using KcpRentedBuffer bufferOwner = _bufferPool.Rent(new KcpBufferPoolRentOptions(_mtu + (_mtu - preBufferSize - postBufferSize), true));
             Memory<byte> buffer = bufferOwner.Memory;
             int size = preBufferSize;
             buffer.Span.Slice(0, size).Clear();
@@ -502,82 +502,104 @@ namespace KcpSharp
             bool lost = false;
             bool change = false;
             LinkedListNodeOfBufferItem? segmentNode;
+            short segmentNodeVersion;
             lock (_sndBuf)
             {
                 segmentNode = _sndBuf.First;
+                segmentNodeVersion = segmentNode?.ValueRef.Version ?? 0;
             }
             while (segmentNode is not null)
             {
-                LinkedListNodeOfBufferItem? nextSegmentNode;
+                int size2 = 0;
                 lock (_sndBuf)
                 {
                     if (_transportClosed)
                     {
                         return;
                     }
-                    nextSegmentNode = segmentNode.Next;
-                }
-
-                bool needsend = false;
-                KcpSendSegmentStats stats = segmentNode.ValueRef.Stats;
-
-                if (segmentNode.ValueRef.Stats.TransmitCount == 0)
-                {
-                    needsend = true;
-                    segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current + segmentNode.ValueRef.Stats.Rto + rtomin, _rx_rto, stats.FastAck, stats.TransmitCount + 1);
-                }
-                else if (TimeDiff(current, stats.ResendTimestamp) >= 0)
-                {
-                    needsend = true;
-                    uint rto = stats.Rto;
-                    if (!_nodelay)
+                    if (segmentNode.ValueRef.Version != segmentNodeVersion)
                     {
-                        rto += Math.Max(stats.Rto, _rx_rto);
+                        break;
                     }
-                    else
-                    {
-                        uint step = rto; //_nodelay < 2 ? segment.rto : _rx_rto;
-                        rto += step / 2;
-                    }
-                    segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current + rto, rto, stats.FastAck, stats.TransmitCount + 1);
-                    lost = true;
-                }
-                else if (stats.FastAck > resent)
-                {
-                    if (stats.TransmitCount <= _fastlimit || _fastlimit == 0)
+
+                    bool needsend = false;
+                    KcpSendSegmentStats stats = segmentNode.ValueRef.Stats;
+
+                    if (segmentNode.ValueRef.Stats.TransmitCount == 0)
                     {
                         needsend = true;
-                        segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current, stats.Rto, 0, stats.TransmitCount + 1);
-                        change = true;
+                        segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current + segmentNode.ValueRef.Stats.Rto + rtomin, _rx_rto, stats.FastAck, stats.TransmitCount + 1);
+                    }
+                    else if (TimeDiff(current, stats.ResendTimestamp) >= 0)
+                    {
+                        needsend = true;
+                        uint rto = stats.Rto;
+                        if (!_nodelay)
+                        {
+                            rto += Math.Max(stats.Rto, _rx_rto);
+                        }
+                        else
+                        {
+                            uint step = rto; //_nodelay < 2 ? segment.rto : _rx_rto;
+                            rto += step / 2;
+                        }
+                        segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current + rto, rto, stats.FastAck, stats.TransmitCount + 1);
+                        lost = true;
+                    }
+                    else if (stats.FastAck > resent)
+                    {
+                        if (stats.TransmitCount <= _fastlimit || _fastlimit == 0)
+                        {
+                            needsend = true;
+                            segmentNode.ValueRef.Stats = new KcpSendSegmentStats(current, stats.Rto, 0, stats.TransmitCount + 1);
+                            change = true;
+                        }
+                    }
+
+                    if (needsend)
+                    {
+                        KcpBuffer data = segmentNode.ValueRef.Data;
+                        KcpPacketHeader header = DeplicateHeader(ref segmentNode.ValueRef.Segment, current, windowSize, unacknowledged);
+
+                        int need = packetHeaderSize + data.Length;
+
+                        if ((size + need) > sizeLimitBeforePostBuffer)
+                        {
+                            header.EncodeHeader(_id, data.Length, buffer.Span.Slice(_mtu), out size2);
+                            if (data.Length > 0)
+                            {
+                                data.DataRegion.CopyTo(buffer.Slice(_mtu + size2));
+                                size2 += data.Length;
+                            }
+                        }
+                        else
+                        {
+                            header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
+                            size += bytesWritten;
+
+                            if (data.Length > 0)
+                            {
+                                data.DataRegion.CopyTo(buffer.Slice(size));
+                                size += data.Length;
+                            }
+                        }
+                    }
+
+                    segmentNode = segmentNode.Next;
+                    if (segmentNode is not null)
+                    {
+                        segmentNodeVersion = segmentNode.ValueRef.Version;
                     }
                 }
 
-                if (needsend)
+                if (size2 != 0)
                 {
-                    KcpBuffer data = segmentNode.ValueRef.Data;
-                    KcpPacketHeader header = DeplicateHeader(ref segmentNode.ValueRef.Segment, current, windowSize, unacknowledged);
-
-                    int need = packetHeaderSize + data.Length;
-                    if ((size + need) > sizeLimitBeforePostBuffer)
-                    {
-                        buffer.Span.Slice(size, postBufferSize).Clear();
-                        await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
-                        size = preBufferSize;
-                        buffer.Span.Slice(0, size).Clear();
-                    }
-
-                    header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
-
-                    size += bytesWritten;
-
-                    if (data.Length > 0)
-                    {
-                        data.DataRegion.CopyTo(buffer.Slice(size));
-                        size += data.Length;
-                    }
+                    buffer.Span.Slice(size, postBufferSize).Clear();
+                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    buffer.Span.Slice(0, size).Clear();
+                    buffer.Span.Slice(_mtu, size2).CopyTo(buffer.Span.Slice(preBufferSize));
+                    size = preBufferSize + size2;
                 }
-
-                segmentNode = nextSegmentNode;
             }
 
             // flush remaining segments
