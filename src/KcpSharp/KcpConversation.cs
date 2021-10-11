@@ -1327,7 +1327,7 @@ namespace KcpSharp
             => _receiveQueue.CancelPendingOperation(null, default);
 
         /// <summary>
-        /// Cancel the current send operation or flush operation.
+        /// Cancel the current receive operation.
         /// </summary>
         /// <param name="innerException">The inner exception of the <see cref="OperationCanceledException"/> thrown by the <see cref="ReceiveAsync(Memory{byte}, CancellationToken)"/> method or <see cref="WaitToReceiveAsync(CancellationToken)"/> method.</param>
         /// <param name="cancellationToken">The <see cref="CancellationToken"/> in the <see cref="OperationCanceledException"/> thrown by the <see cref="ReceiveAsync(Memory{byte}, CancellationToken)"/> method or <see cref="WaitToReceiveAsync(CancellationToken)"/> method.</param>
