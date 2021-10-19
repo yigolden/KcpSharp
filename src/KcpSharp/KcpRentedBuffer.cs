@@ -31,6 +31,11 @@ namespace KcpSharp
         /// </summary>
         public bool IsAllocated => _owner is not null;
 
+        /// <summary>
+        /// Whether this buffer contains no data.
+        /// </summary>
+        public bool IsEmpry => _memory.IsEmpty;
+
         internal KcpRentedBuffer(object? owner, Memory<byte> buffer)
         {
             _owner = owner;
