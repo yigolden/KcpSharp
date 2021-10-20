@@ -3,7 +3,7 @@
   <Sdk Name="Microsoft.DotNet.PackageValidation" Version="$(MicrosoftDotNetPackageValidationPackageVersion)" />
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net5.0;net6.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <AnalysisLevel>latest</AnalysisLevel>
@@ -23,10 +23,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <DefineConstants>$(DefineConstants);NEED_MATH_SHIM;NEED_LINKEDLIST_SHIM;NEED_CANCELLATIONTOKEN_SHIM;NEED_POH_SHIM</DefineConstants>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net5.0'">
-    <DefineConstants>$(DefineConstants);NEED_SOCKET_SHIM</DefineConstants>
+    <DefineConstants>$(DefineConstants);NEED_MATH_SHIM;NEED_LINKEDLIST_SHIM;NEED_CANCELLATIONTOKEN_SHIM;NEED_POH_SHIM;NEED_SOCKET_SHIM;NO_FAST_SPAN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">

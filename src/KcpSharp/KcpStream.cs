@@ -128,13 +128,13 @@ namespace KcpSharp
             base.Dispose(disposing);
         }
 
-#if !NETSTANDARD
+#if !NO_FAST_SPAN
         /// <inheritdoc />
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
             if (_conversation is null)
             {
-                return ValueTask.FromException<int>(new ObjectDisposedException(nameof(KcpStream)));
+                return new ValueTask<int>(Task.FromException<int>(new ObjectDisposedException(nameof(KcpStream))));
             }
             return _conversation.ReadAsync(buffer, cancellationToken);
         }
@@ -144,7 +144,7 @@ namespace KcpSharp
         {
             if (_conversation is null)
             {
-                return ValueTask.FromException(new ObjectDisposedException(nameof(KcpStream)));
+                return new ValueTask(Task.FromException(new ObjectDisposedException(nameof(KcpStream))));
             }
             return _conversation.WriteAsync(buffer, cancellationToken);
         }
