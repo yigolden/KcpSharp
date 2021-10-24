@@ -6,12 +6,6 @@
     public sealed class KcpRawChannelOptions
     {
         /// <summary>
-        /// The buffer allocator used to allocate large chunks of memory.
-        /// </summary>
-        [System.Obsolete("Use BufferPool property instead.")]
-        public IKcpBufferAllocator? BufferAllocator { get; set; }
-
-        /// <summary>
         /// The buffer pool to rent buffer from.
         /// </summary>
         public IKcpBufferPool? BufferPool { get; set; }

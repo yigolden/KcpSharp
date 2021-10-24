@@ -105,9 +105,7 @@ namespace KcpSharp
 
         private KcpConversation(IKcpTransport transport, uint? conversationId, KcpConversationOptions? options)
         {
-#pragma warning disable CS0618 // obsolete member
-            _bufferPool = options is null ? DefaultArrayPoolBufferAllocator.Default : (options.BufferPool ?? (options.BufferAllocator is null ? DefaultArrayPoolBufferAllocator.Default : new KcpBufferPoolAdapter(options.BufferAllocator)));
-#pragma warning restore CS0618 
+            _bufferPool = options?.BufferPool ?? DefaultArrayPoolBufferAllocator.Default;
             _transport = transport;
             _id = conversationId;
 

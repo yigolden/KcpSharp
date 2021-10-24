@@ -58,7 +58,7 @@ namespace KcpSharp
         protected virtual IMemoryOwner<byte> AllocateBuffer(int size)
         {
 #if NEED_POH_SHIM
-            return DefaultArrayPoolBufferAllocator.Default.Allocate(size);
+            return MemoryPool<byte>.Shared.Rent(size);
 #else
             return new ArrayMemoryOwner(GC.AllocateUninitializedArray<byte>(size, pinned: true));
 #endif
