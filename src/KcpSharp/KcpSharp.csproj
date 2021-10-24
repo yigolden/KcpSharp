@@ -19,7 +19,7 @@
     <!-- CA2213: Disposable fields should be disposed -->
     <!-- CA2231: Overload operator equals on overriding ValueType.Equals -->
 
-    <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>
+    <!-- <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>-->
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
