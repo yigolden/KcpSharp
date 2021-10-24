@@ -5,6 +5,5 @@
         public KcpBuffer Data;
         public KcpPacketHeader Segment;
         public KcpSendSegmentStats Stats;
-        public short Version;
     }
 }
