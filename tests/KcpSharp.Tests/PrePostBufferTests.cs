@@ -253,7 +253,6 @@ namespace KcpSharp.Tests
 
                 if (_validationResult.HasValue)
                 {
-
                     _validationResult = _validationResult.GetValueOrDefault() & result;
                 }
                 else

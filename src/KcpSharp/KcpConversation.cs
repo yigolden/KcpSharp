@@ -70,8 +70,7 @@ namespace KcpSharp
         private bool _nocwnd;
         private bool _stream;
 
-        private KcpConversationUpdateNotification? _updateEvent;
-        private CancellationTokenSource? _checkLoopCts;
+        private KcpConversationUpdateActivation? _updateActivation;
         private CancellationTokenSource? _updateLoopCts;
         private bool _transportClosed;
         private bool _disposed;
@@ -172,19 +171,17 @@ namespace KcpSharp
             _nocwnd = options is not null && options.DisableCongestionControl;
             _stream = options is not null && options.StreamMode;
 
-            _updateEvent = new KcpConversationUpdateNotification();
+            _updateActivation = new KcpConversationUpdateActivation((int)_interval);
             _queueItemCache = new KcpSendReceiveQueueItemCache();
-            _sendQueue = new KcpSendQueue(_bufferPool, _updateEvent, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
+            _sendQueue = new KcpSendQueue(_bufferPool, _updateActivation, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
             _receiveQueue = new KcpReceiveQueue(_stream, _queueItemCache);
             _ackList = new KcpAcknowledgeList(_sendQueue, (int)_snd_wnd);
 
-            _checkLoopCts = new CancellationTokenSource();
             _updateLoopCts = new CancellationTokenSource();
 
             _ts_flush = GetTimestamp();
 
-            _ = Task.Run(() => CheckAndSignalLoopAsync(_checkLoopCts));
-            _ = Task.Run(() => RunUpdateOnEventLoopAsync(_updateLoopCts));
+            _ = Task.Run(() => RunUpdateOnActivationAsync(_updateLoopCts.Token));
         }
 
         /// <summary>
@@ -310,49 +307,6 @@ namespace KcpSharp
 
         internal ValueTask FlushForStreamAsync(CancellationToken cancellationToken)
             => _sendQueue.FlushForStreamAsync(cancellationToken);
-
-        private int Check(uint current)
-        {
-            uint nextFlushTimestamp = _ts_flush;
-            int minFlushDiff = int.MaxValue;
-
-            if (TimeDiff(current, nextFlushTimestamp) >= 10000 || TimeDiff(current, nextFlushTimestamp) < -10000)
-            {
-                nextFlushTimestamp = current;
-            }
-
-            if (TimeDiff(current, nextFlushTimestamp) >= 0)
-            {
-                return 0;
-            }
-
-            int nextFlushDiff = TimeDiff(nextFlushTimestamp, current);
-
-            lock (_sndBuf)
-            {
-                LinkedListNodeOfBufferItem? node = _sndBuf.First;
-                while (node is not null)
-                {
-                    ref KcpSendReceiveBufferItem item = ref node.ValueRef;
-                    ref KcpSendSegmentStats segment = ref item.Stats;
-
-                    int diff = TimeDiff(segment.ResendTimestamp, current);
-                    if (diff <= 0)
-                    {
-                        return 0;
-                    }
-                    if (diff < minFlushDiff)
-                    {
-                        minFlushDiff = diff;
-                    }
-                    node = node.Next;
-                }
-            }
-
-            int minimal = minFlushDiff < nextFlushDiff ? minFlushDiff : nextFlushDiff;
-            return Math.Min(minimal, (int)_interval);
-        }
-
 
 #if !NET6_0_OR_GREATER
         private ValueTask FlushCoreAsync(CancellationToken cancellationToken)
@@ -681,105 +635,58 @@ namespace KcpSharp
             return 0;
         }
 
-        private async Task CheckAndSignalLoopAsync(CancellationTokenSource cts)
+        private async Task RunUpdateOnActivationAsync(CancellationToken cancellationToken)
         {
-            KcpConversationUpdateNotification? ev = _updateEvent;
-            if (ev is null)
+            KcpConversationUpdateActivation? activation = _updateActivation;
+            if (activation is null)
             {
                 return;
             }
-            CancellationToken cancellationToken = cts.Token;
-            try
+
+            while (!cancellationToken.IsCancellationRequested)
             {
-                while (!cancellationToken.IsCancellationRequested)
+                using KcpConversationUpdateNotification notification = await activation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                if (_transportClosed)
                 {
-                    int wait = Check(GetTimestamp());
-                    if (wait != 0)
-                    {
-                        await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                        ev.TrySet(true);
-                    }
-                    else
-                    {
-                        if (!ev.TrySet(true, out bool previouslySet) || previouslySet)
-                        {
-                            await Task.Delay((int)_interval, cancellationToken).ConfigureAwait(false);
-                        }
-                    }
+                    break;
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                // do nothing
-            }
-            finally
-            {
-                cts.Dispose();
-            }
 
-        }
-
-        private async Task RunUpdateOnEventLoopAsync(CancellationTokenSource cts)
-        {
-            CancellationToken cancellationToken = cts.Token;
-            KcpConversationUpdateNotification? ev = _updateEvent;
-            if (ev is null)
-            {
-                return;
-            }
-
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested)
+                ReadOnlyMemory<byte> packet = notification.Packet;
+                if (!packet.IsEmpty)
                 {
-                    bool isPeriodic = await ev.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    SetInput(packet.Span);
+                }
 
-                    uint current = GetTimestamp();
-                    if (!isPeriodic)
-                    {
-                        if (_nodelay)
-                        {
-                            _ts_flush = current;
-                        }
-                        else
-                        {
-                            int wait = Check(current);
-                            if (wait != 0)
-                            {
-                                await Task.Delay(wait, cancellationToken).ConfigureAwait(false);
-                            }
-                            current = GetTimestamp();
-                        }
-                    }
+                if (_transportClosed)
+                {
+                    break;
+                }
 
-                    try
+                uint current = GetTimestamp();
+                bool update = notification.TimerNotification;
+                if (_nodelay)
+                {
+                    _ts_flush = current;
+                }
+
+                try
+                {
+                    if (update)
                     {
                         await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException)
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (!HandleFlushException(ex))
                     {
                         break;
                     }
-                    catch (Exception ex)
-                    {
-                        if (!HandleFlushException(ex))
-                        {
-                            break;
-                        }
-                    }
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                // Do nothing
-            }
-            catch (ObjectDisposedException)
-            {
-                // Do nothing
-            }
-            finally
-            {
-                cts.Dispose();
             }
         }
 
@@ -858,25 +765,13 @@ namespace KcpSharp
                 return default;
             }
 
-            OnReceivedCore(packet.Span); // do not use packetSpan here, because SetInput will also check for conversation id
-            return default;
-        }
-
-        private void OnReceivedCore(ReadOnlySpan<byte> packet)
-        {
-            if (_transportClosed)
+            KcpConversationUpdateActivation? activation = _updateActivation;
+            if (activation is null)
             {
-                return;
+                return default;
             }
 
-            try
-            {
-                SetInput(packet);
-            }
-            finally
-            {
-                _updateEvent?.TrySet(false);
-            }
+            return activation.InputPacketAsync(packet, cancellationToken);
         }
 
         private void SetInput(ReadOnlySpan<byte> packet)
@@ -1339,21 +1234,12 @@ namespace KcpSharp
         public void SetTransportClosed()
         {
             _transportClosed = true;
-            try
+            Interlocked.Exchange(ref _updateActivation, null)?.Dispose();
+            CancellationTokenSource? updateLoopCts = Interlocked.Exchange(ref _updateLoopCts, null);
+            if (updateLoopCts is not null)
             {
-                Interlocked.Exchange(ref _checkLoopCts, null)?.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Ignore
-            }
-            try
-            {
-                Interlocked.Exchange(ref _updateLoopCts, null)?.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Ignore
+                updateLoopCts.Cancel();
+                updateLoopCts.Dispose();
             }
 
             _sendQueue.SetTransportClosed();
@@ -1391,7 +1277,6 @@ namespace KcpSharp
             {
                 _sendQueue.Dispose();
                 _receiveQueue.Dispose();
-                Interlocked.Exchange(ref _updateEvent, null)?.Dispose();
             }
         }
 

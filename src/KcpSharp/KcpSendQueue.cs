@@ -17,7 +17,7 @@ namespace KcpSharp
     internal sealed class KcpSendQueue : IValueTaskSource<bool>, IValueTaskSource, IDisposable
     {
         private readonly IKcpBufferPool _bufferPool;
-        private readonly KcpConversationUpdateNotification _updateNotification;
+        private readonly KcpConversationUpdateActivation _updateActivation;
         private readonly bool _stream;
         private readonly int _capacity;
         private readonly int _mss;
@@ -41,10 +41,10 @@ namespace KcpSharp
         private CancellationTokenRegistration _cancellationRegistration;
 
         private bool _ackListNotEmpty;
-        public KcpSendQueue(IKcpBufferPool bufferPool, KcpConversationUpdateNotification updateNotification, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
+        public KcpSendQueue(IKcpBufferPool bufferPool, KcpConversationUpdateActivation updateActivation, bool stream, int capacity, int mss, KcpSendReceiveQueueItemCache cache)
         {
             _bufferPool = bufferPool;
-            _updateNotification = updateNotification;
+            _updateActivation = updateActivation;
             _stream = stream;
             _capacity = capacity;
             _mss = mss;
@@ -280,7 +280,7 @@ namespace KcpSharp
 
                 if (anySegmentAdded)
                 {
-                    _updateNotification.TrySet(false);
+                    _updateActivation.Notify();
                 }
                 return anySegmentAdded;
             }
@@ -349,7 +349,7 @@ namespace KcpSharp
                     Interlocked.Add(ref _unflushedBytes, size);
                 }
 
-                _updateNotification.TrySet(false);
+                _updateActivation.Notify();
 
                 if (count == 0)
                 {
@@ -427,7 +427,7 @@ namespace KcpSharp
                     Interlocked.Add(ref _unflushedBytes, size);
                 }
 
-                _updateNotification.TrySet(false);
+                _updateActivation.Notify();
 
                 if (count == 0)
                 {
