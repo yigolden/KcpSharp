@@ -453,22 +453,10 @@ namespace KcpSharp
             // flush data segments
             bool lost = false;
             bool change = false;
-            LinkedListNodeOfBufferItem? segmentNode;
-            lock (_sndBuf)
+            LinkedListNodeOfBufferItem? segmentNode = _sndBuf.First;
+            while (segmentNode is not null && !_transportClosed)
             {
-                segmentNode = _sndBuf.First;
-            }
-            while (segmentNode is not null)
-            {
-                LinkedListNodeOfBufferItem? nextSegmentNode;
-                lock (_sndBuf)
-                {
-                    if (_transportClosed)
-                    {
-                        return;
-                    }
-                    nextSegmentNode = segmentNode.Next;
-                }
+                LinkedListNodeOfBufferItem? nextSegmentNode = segmentNode.Next;
 
                 bool needsend = false;
                 KcpSendSegmentStats stats = segmentNode.ValueRef.Stats;
@@ -506,10 +494,9 @@ namespace KcpSharp
 
                 if (needsend)
                 {
-                    KcpBuffer data = segmentNode.ValueRef.Data;
                     KcpPacketHeader header = DeplicateHeader(ref segmentNode.ValueRef.Segment, current, windowSize, unacknowledged);
 
-                    int need = packetHeaderSize + data.Length;
+                    int need = packetHeaderSize + segmentNode.ValueRef.Data.Length;
                     if ((size + need) > sizeLimitBeforePostBuffer)
                     {
                         buffer.Span.Slice(size, postBufferSize).Clear();
@@ -518,14 +505,21 @@ namespace KcpSharp
                         buffer.Span.Slice(0, size).Clear();
                     }
 
-                    header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
-
-                    size += bytesWritten;
-
-                    if (data.Length > 0)
+                    lock (segmentNode)
                     {
-                        data.DataRegion.CopyTo(buffer.Slice(size));
-                        size += data.Length;
+                        KcpBuffer data = segmentNode.ValueRef.Data;
+                        if (!_transportClosed)
+                        {
+                            header.EncodeHeader(_id, data.Length, buffer.Span.Slice(size), out int bytesWritten);
+
+                            size += bytesWritten;
+
+                            if (data.Length > 0)
+                            {
+                                data.DataRegion.CopyTo(buffer.Slice(size));
+                                size += data.Length;
+                            }
+                        }
                     }
                 }
 
@@ -1223,12 +1217,19 @@ namespace KcpSharp
             lock (_sndBuf)
             {
                 LinkedListNodeOfBufferItem? node = _sndBuf.First;
+                LinkedListNodeOfBufferItem? next = node?.Next;
                 while (node is not null)
                 {
-                    node.ValueRef.Data.Release();
-                    node = node.Next;
+                    lock (node)
+                    {
+                        node.ValueRef.Data.Release();
+                        node.ValueRef = default;
+                    }
+
+                    _sndBuf.Remove(node);
+                    node = next;
+                    next = node?.Next;
                 }
-                _sndBuf.Clear();
             }
             lock (_rcvBuf)
             {
