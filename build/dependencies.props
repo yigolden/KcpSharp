@@ -6,13 +6,13 @@
   <PropertyGroup Label="Dependency Versions">
     <SystemCommandLinePackageVersion>2.0.0-beta1.21308.1</SystemCommandLinePackageVersion>
 
-    <NerdbankGitVersioningPackageVersion>3.4.220</NerdbankGitVersioningPackageVersion>
+    <NerdbankGitVersioningPackageVersion>3.4.244</NerdbankGitVersioningPackageVersion>
     <MicrosoftDotNetPackageValidationPackageVersion>1.0.0-preview.7.21379.12</MicrosoftDotNetPackageValidationPackageVersion>
 
-    <MicrosoftBclAsyncInterfacesPackageVersion>5.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
+    <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
     <SystemMemoryPackageVersion>4.5.4</SystemMemoryPackageVersion>
-    <SystemRuntimeCompilerServicesUnsafePackageVersion>5.0.0</SystemRuntimeCompilerServicesUnsafePackageVersion>
+    <SystemRuntimeCompilerServicesUnsafePackageVersion>6.0.0</SystemRuntimeCompilerServicesUnsafePackageVersion>
     <SystemThreadingTasksExtensionsPackageVersion>4.5.4</SystemThreadingTasksExtensionsPackageVersion>
   </PropertyGroup>
 </Project>
