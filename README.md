@@ -10,8 +10,7 @@ KCP is a fast and reliable Automatic Repeat reQuest (ARQ) protocol. It can be us
 
 ## Supported Runtimes
 * Runtimes compatible with .NET Standard 2.0
-* .NET 5
-* .NET 6 (recommended)
+* .NET 6
 
 ## Installation
 
