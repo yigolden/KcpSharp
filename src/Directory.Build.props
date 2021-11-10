@@ -28,6 +28,10 @@
     <!-- Enable deterministic build -->
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    
+    <!-- Package validation -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup>

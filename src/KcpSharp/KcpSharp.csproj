@@ -1,7 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Sdk Name="Microsoft.DotNet.PackageValidation" Version="$(MicrosoftDotNetPackageValidationPackageVersion)" />
-
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net6.0</TargetFrameworks>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
@@ -19,7 +17,6 @@
     <!-- CA2213: Disposable fields should be disposed -->
     <!-- CA2231: Overload operator equals on overriding ValueType.Equals -->
 
-    <!-- <PackageValidationBaselineVersion>$(PreviouslyPublishedPackageVersion)</PackageValidationBaselineVersion>-->
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
