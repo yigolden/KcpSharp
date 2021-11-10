@@ -7,6 +7,7 @@
     <SystemCommandLinePackageVersion>2.0.0-beta1.21308.1</SystemCommandLinePackageVersion>
 
     <NerdbankGitVersioningPackageVersion>3.4.244</NerdbankGitVersioningPackageVersion>
+    <MicrosoftSourceLinkGitHubPackageVersion>1.1.0</MicrosoftSourceLinkGitHubPackageVersion>
 
     <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
