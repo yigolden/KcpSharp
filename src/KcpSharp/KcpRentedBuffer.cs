@@ -90,6 +90,21 @@ namespace KcpSharp
         /// Create the buffer from the specified array pool.
         /// </summary>
         /// <param name="pool">The array pool to use.</param>
+        /// <param name="arraySegment">The byte array segment rented from the specified pool.</param>
+        /// <returns>The rented buffer.</returns>
+        public static KcpRentedBuffer FromArrayPool(ArrayPool<byte> pool, ArraySegment<byte> arraySegment)
+        {
+            if (pool is null)
+            {
+                throw new ArgumentNullException(nameof(pool));
+            }
+            return new KcpRentedBuffer(pool, arraySegment);
+        }
+
+        /// <summary>
+        /// Create the buffer from the specified array pool.
+        /// </summary>
+        /// <param name="pool">The array pool to use.</param>
         /// <param name="size">The minimum size of the buffer required.</param>
         /// <returns>The rented buffer.</returns>
         public static KcpRentedBuffer FromArrayPool(ArrayPool<byte> pool, int size)
