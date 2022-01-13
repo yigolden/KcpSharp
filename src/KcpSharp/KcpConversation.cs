@@ -615,28 +615,32 @@ namespace KcpSharp
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                using KcpConversationUpdateNotification notification = await activation.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-                if (_transportClosed)
+                uint current;
+                bool update;
+                using (KcpConversationUpdateNotification notification = await activation.WaitAsync(CancellationToken.None).ConfigureAwait(false))
                 {
-                    break;
-                }
+                    if (_transportClosed)
+                    {
+                        break;
+                    }
 
-                ReadOnlyMemory<byte> packet = notification.Packet;
-                if (!packet.IsEmpty)
-                {
-                    SetInput(packet.Span);
-                }
+                    ReadOnlyMemory<byte> packet = notification.Packet;
+                    if (!packet.IsEmpty)
+                    {
+                        SetInput(packet.Span);
+                    }
 
-                if (_transportClosed)
-                {
-                    break;
-                }
+                    if (_transportClosed)
+                    {
+                        break;
+                    }
 
-                uint current = GetTimestamp();
-                bool update = notification.TimerNotification;
-                if (_nodelay)
-                {
-                    _ts_flush = current;
+                    current = GetTimestamp();
+                    update = notification.TimerNotification;
+                    if (_nodelay)
+                    {
+                        _ts_flush = current;
+                    }
                 }
 
                 try
