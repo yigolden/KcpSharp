@@ -93,7 +93,7 @@ namespace KcpSharp
             _receiveQueue = new KcpRawReceiveQueue(_bufferPool, queueSize);
             _sendOperation = new KcpRawSendOperation(_sendNotification);
 
-            _ = Task.Run(() => SendLoopAsync(_sendLoopCts));
+            RunSendLoop();
         }
 
         /// <summary>
@@ -153,9 +153,9 @@ namespace KcpSharp
             => _sendOperation.CancelPendingOperation(innerException, cancellationToken);
 
 
-        private async Task SendLoopAsync(CancellationTokenSource cts)
+        private async void RunSendLoop()
         {
-            CancellationToken cancellationToken = cts.Token;
+            CancellationToken cancellationToken = _sendLoopCts?.Token ?? new CancellationToken(true);
             KcpRawSendOperation sendOperation = _sendOperation;
             AsyncAutoResetEvent<int> ev = _sendNotification;
             int mss = _mtu - _preBufferSize - _postBufferSize;
@@ -230,9 +230,9 @@ namespace KcpSharp
             {
                 // Do nothing
             }
-            finally
+            catch (Exception ex)
             {
-                cts.Dispose();
+                HandleFlushException(ex);
             }
         }
 
@@ -345,13 +345,11 @@ namespace KcpSharp
         /// <inheritdoc />
         public void SetTransportClosed()
         {
-            try
+            CancellationTokenSource? cts = Interlocked.Exchange(ref _sendLoopCts, null);
+            if (cts is not null)
             {
-                Interlocked.Exchange(ref _sendLoopCts, null)?.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Ignore
+                cts.Cancel();
+                cts.Dispose();
             }
 
             _receiveQueue.SetTransportClosed();

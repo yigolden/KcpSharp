@@ -91,7 +91,7 @@ namespace KcpSharp
                 throw new InvalidOperationException();
             }
             _cts = new CancellationTokenSource();
-            _ = Task.Run(() => RunReceiveLoopAsync(_cts));
+            RunReceiveLoop();
         }
 
 
@@ -206,14 +206,15 @@ namespace KcpSharp
 #endif
 
 
-        private async Task RunReceiveLoopAsync(CancellationTokenSource cts)
+        private async void RunReceiveLoop()
         {
+            CancellationToken cancellationToken = _cts?.Token ?? new CancellationToken(true);
             IKcpConversation? connection = _connection;
-            if (connection is null)
+            if (connection is null || cancellationToken.IsCancellationRequested)
             {
                 return;
             }
-            CancellationToken cancellationToken = cts.Token;
+
             using IMemoryOwner<byte> memoryOwner = AllocateBuffer(_mtu);
             try
             {
@@ -249,12 +250,11 @@ namespace KcpSharp
             {
                 // Do nothing
             }
-            finally
+            catch (Exception ex)
             {
-                cts.Dispose();
+                HandleExceptionWrapper(ex);
             }
         }
-
 
         private bool HandleExceptionWrapper(Exception ex)
         {
@@ -269,13 +269,11 @@ namespace KcpSharp
             }
 
             _connection?.SetTransportClosed();
-            try
+            CancellationTokenSource? cts = Interlocked.Exchange(ref _cts, null);
+            if (cts is not null)
             {
-                Interlocked.Exchange(ref _cts, null)?.Cancel();
-            }
-            catch
-            {
-                // Ignore
+                cts.Cancel();
+                cts.Dispose();
             }
 
             return result;
@@ -291,13 +289,11 @@ namespace KcpSharp
             {
                 if (disposing)
                 {
-                    try
+                    CancellationTokenSource? cts = Interlocked.Exchange(ref _cts, null);
+                    if (cts is not null)
                     {
-                        Interlocked.Exchange(ref _cts, null)?.Cancel();
-                    }
-                    catch
-                    {
-                        // Ignore
+                        cts.Cancel();
+                        cts.Dispose();
                     }
                     _connection?.Dispose();
                 }

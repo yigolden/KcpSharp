@@ -179,7 +179,7 @@ namespace KcpSharp
 
             _ts_flush = GetTimestamp();
 
-            _ = Task.Run(() => RunUpdateOnActivationAsync(_updateLoopCts.Token));
+            RunUpdateOnActivation();
         }
 
         /// <summary>
@@ -605,8 +605,9 @@ namespace KcpSharp
             return 0;
         }
 
-        private async Task RunUpdateOnActivationAsync(CancellationToken cancellationToken)
+        private async void RunUpdateOnActivation()
         {
+            CancellationToken cancellationToken = _updateLoopCts?.Token ?? new CancellationToken(true);
             KcpConversationUpdateActivation? activation = _updateActivation;
             if (activation is null)
             {
