@@ -70,6 +70,12 @@ namespace KcpSharp
         private bool _nocwnd;
         private bool _stream;
 
+        private bool _keepAliveEnabled;
+        private uint _keepAliveInterval;
+        private uint _keepAliveGracePeriod;
+        private uint _lastReceiveTick;
+        private uint _lastSendTick;
+
         private KcpConversationUpdateActivation? _updateActivation;
         private CancellationTokenSource? _updateLoopCts;
         private bool _transportClosed;
@@ -179,6 +185,15 @@ namespace KcpSharp
 
             _ts_flush = GetTimestamp();
 
+            _lastSendTick = _ts_flush;
+            _lastReceiveTick = _ts_flush;
+            KcpKeepAliveOptions? keepAliveOptions = options?.KeepAliveOptions;
+            if (keepAliveOptions is not null)
+            {
+                _keepAliveEnabled = true;
+                _keepAliveInterval = (uint)keepAliveOptions.SendInterval;
+                _keepAliveGracePeriod = (uint)keepAliveOptions.GracePeriod;
+            }
             RunUpdateOnActivation();
         }
 
@@ -344,6 +359,7 @@ namespace KcpSharp
                     {
                         buffer.Span.Slice(size, postBufferSize).Clear();
                         await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                        _lastSendTick = GetTimestamp();
                         size = preBufferSize;
                         buffer.Span.Slice(0, size).Clear();
                     }
@@ -394,6 +410,7 @@ namespace KcpSharp
                 {
                     buffer.Span.Slice(size, postBufferSize).Clear();
                     await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    _lastSendTick = GetTimestamp();
                     size = preBufferSize;
                     buffer.Span.Slice(0, size).Clear();
                 }
@@ -409,6 +426,7 @@ namespace KcpSharp
                 {
                     buffer.Span.Slice(size, postBufferSize).Clear();
                     await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    _lastSendTick = GetTimestamp();
                     size = preBufferSize;
                     buffer.Span.Slice(0, size).Clear();
                 }
@@ -501,6 +519,7 @@ namespace KcpSharp
                     {
                         buffer.Span.Slice(size, postBufferSize).Clear();
                         await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                        _lastSendTick = GetTimestamp();
                         size = preBufferSize;
                         buffer.Span.Slice(0, size).Clear();
                     }
@@ -531,50 +550,62 @@ namespace KcpSharp
             {
                 buffer.Span.Slice(size, postBufferSize).Clear();
                 await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                _lastSendTick = GetTimestamp();
             }
 
             _ackList.Clear();
 
+            // update window
+            bool lockTaken = false;
+            try
             {
-                bool lockTaken = false;
-                try
+                _cwndUpdateLock.Enter(ref lockTaken);
+
+                uint updatedCwnd = _cwnd;
+                uint incr = _incr;
+
+                // update sshthresh
+                if (change)
                 {
-                    _cwndUpdateLock.Enter(ref lockTaken);
-
-                    uint updatedCwnd = _cwnd;
-                    uint incr = _incr;
-
-                    // update sshthresh
-                    if (change)
-                    {
-                        uint inflight = _snd_nxt - _snd_una;
-                        _ssthresh = Math.Max(inflight / 2, IKCP_THRESH_MIN);
-                        updatedCwnd = _ssthresh + resent;
-                        incr = updatedCwnd * (uint)_mss;
-                    }
-
-                    if (lost)
-                    {
-                        _ssthresh = Math.Max(cwnd / 2, IKCP_THRESH_MIN);
-                        updatedCwnd = 1;
-                        incr = (uint)_mss;
-                    }
-
-                    if (updatedCwnd < 1)
-                    {
-                        updatedCwnd = 1;
-                        incr = (uint)_mss;
-                    }
-
-                    _cwnd = updatedCwnd;
-                    _incr = incr;
+                    uint inflight = _snd_nxt - _snd_una;
+                    _ssthresh = Math.Max(inflight / 2, IKCP_THRESH_MIN);
+                    updatedCwnd = _ssthresh + resent;
+                    incr = updatedCwnd * (uint)_mss;
                 }
-                finally
+
+                if (lost)
                 {
-                    if (lockTaken)
-                    {
-                        _cwndUpdateLock.Exit();
-                    }
+                    _ssthresh = Math.Max(cwnd / 2, IKCP_THRESH_MIN);
+                    updatedCwnd = 1;
+                    incr = (uint)_mss;
+                }
+
+                if (updatedCwnd < 1)
+                {
+                    updatedCwnd = 1;
+                    incr = (uint)_mss;
+                }
+
+                _cwnd = updatedCwnd;
+                _incr = incr;
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _cwndUpdateLock.Exit();
+                }
+            }
+
+            // send keep-alive
+            if (_keepAliveEnabled)
+            {
+                if (TimeDiff(GetTimestamp(), _lastSendTick) > _keepAliveInterval)
+                {
+                    var header = new KcpPacketHeader(KcpCommand.WindowSize, 0, windowSize, 0, 0, unacknowledged);
+                    header.EncodeHeader(_id, 0, buffer.Span, out int bytesWritten);
+                    await _transport.SendPacketAsync(buffer.Slice(0, bytesWritten), cancellationToken).ConfigureAwait(false);
+                    _lastSendTick = GetTimestamp();
                 }
             }
         }
@@ -661,6 +692,11 @@ namespace KcpSharp
                     {
                         break;
                     }
+                }
+
+                if (_keepAliveEnabled && TimeDiff(GetTimestamp(), _lastReceiveTick) > _keepAliveGracePeriod)
+                {
+                    SetTransportClosed();
                 }
             }
         }
@@ -791,6 +827,7 @@ namespace KcpSharp
                     return;
                 }
 
+                _lastReceiveTick = current;
                 _rmt_wnd = header.WindowSize;
                 HandleUnacknowledged(header.Unacknowledged);
                 UpdateSendUnacknowledged();
@@ -858,7 +895,6 @@ namespace KcpSharp
             {
                 HandleFastAck(maxack, latest_ts);
             }
-
 
             if (TimeDiff(_snd_una, prev_una) > 0)
             {

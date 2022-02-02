@@ -70,6 +70,11 @@
         /// </summary>
         public int PostBufferSize { get; set; }
 
+        /// <summary>
+        /// Options for customized keep-alive functionality.
+        /// </summary>
+        public KcpKeepAliveOptions? KeepAliveOptions { get; set; }
+
         internal const int MtuDefaultValue = 1400;
         internal const uint SendWindowDefaultValue = 32;
         internal const uint ReceiveWindowDefaultValue = 128;

@@ -68,7 +68,7 @@ namespace KcpSharp.Tests
         [Theory]
         public Task TestWaitForData(bool streamMode, int size)
         {
-            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10000), async cancellationToken =>
+            return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(10), async cancellationToken =>
             {
                 using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { StreamMode = streamMode });
                 Assert.True(pipe.Alice.TrySend(new byte[size]));
