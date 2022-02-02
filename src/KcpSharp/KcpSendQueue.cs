@@ -57,6 +57,10 @@ namespace KcpSharp
             _queue = new LinkedListOfQueueItem();
         }
 
+        public ValueTaskSourceStatus GetStatus(short token) => _mrvtsc.GetStatus(token);
+        public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+            => _mrvtsc.OnCompleted(continuation, state, token, flags);
+
         bool IValueTaskSource<bool>.GetResult(short token)
         {
             _cancellationRegistration.Dispose();
@@ -76,10 +80,6 @@ namespace KcpSharp
             }
         }
 
-        ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-            => _mrvtsc.OnCompleted(continuation, state, token, flags);
-
         void IValueTaskSource.GetResult(short token)
         {
             try
@@ -97,10 +97,6 @@ namespace KcpSharp
                 }
             }
         }
-
-        ValueTaskSourceStatus IValueTaskSource.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-            => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
         public bool TryGetAvailableSpace(out int byteCount, out int segmentCount)
         {

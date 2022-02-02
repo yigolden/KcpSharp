@@ -45,6 +45,10 @@ namespace KcpSharp
             _cache = cache;
         }
 
+        public ValueTaskSourceStatus GetStatus(short token) => _mrvtsc.GetStatus(token);
+        public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+            => _mrvtsc.OnCompleted(continuation, state, token, flags);
+
         KcpConversationReceiveResult IValueTaskSource<KcpConversationReceiveResult>.GetResult(short token)
         {
             _cancellationRegistration.Dispose();
@@ -63,9 +67,6 @@ namespace KcpSharp
                 }
             }
         }
-        ValueTaskSourceStatus IValueTaskSource<KcpConversationReceiveResult>.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource<KcpConversationReceiveResult>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-            => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
         int IValueTaskSource<int>.GetResult(short token)
         {
@@ -86,10 +87,6 @@ namespace KcpSharp
             }
         }
 
-        ValueTaskSourceStatus IValueTaskSource<int>.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource<int>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-            => _mrvtsc.OnCompleted(continuation, state, token, flags);
-
         bool IValueTaskSource<bool>.GetResult(short token)
         {
             _cancellationRegistration.Dispose();
@@ -108,10 +105,6 @@ namespace KcpSharp
                 }
             }
         }
-
-        ValueTaskSourceStatus IValueTaskSource<bool>.GetStatus(short token) => _mrvtsc.GetStatus(token);
-        void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
-            => _mrvtsc.OnCompleted(continuation, state, token, flags);
 
         public bool TryPeek(out KcpConversationReceiveResult result)
         {
@@ -239,7 +232,6 @@ namespace KcpSharp
 
             return new ValueTask<bool>(this, token);
         }
-
 
         public bool TryReceive(Span<byte> buffer, out KcpConversationReceiveResult result)
         {
