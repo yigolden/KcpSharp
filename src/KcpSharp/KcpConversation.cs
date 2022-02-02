@@ -1208,7 +1208,20 @@ namespace KcpSharp
         /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
         /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the receive queue contains at least <paramref name="minimumBytes"/> bytes. The result of the task is false when the transport is closed.</returns>
         public ValueTask<bool> WaitForReceiveQueueAvailableDataAsync(int minimumBytes, CancellationToken cancellationToken = default)
-            => _receiveQueue.WaitForAvailableDataAsync(minimumBytes, cancellationToken);
+            => _receiveQueue.WaitForAvailableDataAsync(minimumBytes, 0, cancellationToken);
+
+        /// <summary>
+        /// Wait until the receive queue contains at leat <paramref name="minimumBytes"/> bytes, and also <paramref name="minimumSegments"/> segments.
+        /// </summary>
+        /// <param name="minimumBytes">The minimum bytes in the receive queue.</param>
+        /// <param name="minimumSegments">The minimum segments in the receive queue</param>
+        /// <param name="cancellationToken">The token to cancel this operation.</param>
+        /// <exception cref="ArgumentOutOfRangeException">Any od <paramref name="minimumBytes"/> and <paramref name="minimumSegments"/> is a negative integer.</exception>
+        /// <exception cref="OperationCanceledException">The <paramref name="cancellationToken"/> is fired before receive operation is completed.</exception>
+        /// <exception cref="InvalidOperationException">The receive or peek operation is initiated concurrently.</exception>
+        /// <returns>A <see cref="ValueTask{Boolean}"/> that completes when the receive queue contains at least <paramref name="minimumBytes"/> bytes. The result of the task is false when the transport is closed.</returns>
+        public ValueTask<bool> WaitForReceiveQueueAvailableDataAsync(int minimumBytes, int minimumSegments, CancellationToken cancellationToken = default)
+            => _receiveQueue.WaitForAvailableDataAsync(minimumBytes, minimumSegments, cancellationToken);
 
         /// <summary>
         /// Wait for the next full message to arrive if the receive queue is empty. Remove the next available message in the receive queue and copy its content into <paramref name="buffer"/>. When in stream mode, move as many bytes as possible into <paramref name="buffer"/>.

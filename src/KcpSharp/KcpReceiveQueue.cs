@@ -31,6 +31,7 @@ namespace KcpSharp
         private byte _operationMode; // 0-receive 1-wait for message 2-wait for available data
         private Memory<byte> _buffer;
         private int _minimumBytes;
+        private int _minimumSegments;
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
@@ -165,6 +166,7 @@ namespace KcpSharp
                 _operationMode = 1;
                 _buffer = default;
                 _minimumBytes = 0;
+                _minimumSegments = 0;
 
                 token = _mrvtsc.Version;
                 if (_completedPacketsCount > 0)
@@ -191,11 +193,15 @@ namespace KcpSharp
             return new ValueTask<KcpConversationReceiveResult>(this, token);
         }
 
-        public ValueTask<bool> WaitForAvailableDataAsync(int minimumBytes, CancellationToken cancellationToken)
+        public ValueTask<bool> WaitForAvailableDataAsync(int minimumBytes, int minimumSegments, CancellationToken cancellationToken)
         {
             if (minimumBytes < 0)
             {
                 return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumBytes))));
+            }
+            if (minimumSegments < 0)
+            {
+                return new ValueTask<bool>(Task.FromException<bool>(ThrowHelper.NewArgumentOutOfRangeException(nameof(minimumSegments))));
             }
 
             short token;
@@ -214,7 +220,7 @@ namespace KcpSharp
                     return new ValueTask<bool>(Task.FromCanceled<bool>(cancellationToken));
                 }
 
-                if (CheckQueeuSize(_queue, minimumBytes))
+                if (CheckQueeuSize(_queue, minimumBytes, minimumSegments, _stream))
                 {
                     return new ValueTask<bool>(true);
                 }
@@ -224,6 +230,7 @@ namespace KcpSharp
                 _operationMode = 2;
                 _buffer = default;
                 _minimumBytes = minimumBytes;
+                _minimumSegments = minimumSegments;
                 _cancellationToken = cancellationToken;
 
                 token = _mrvtsc.Version;
@@ -389,6 +396,7 @@ namespace KcpSharp
             _operationMode = 0;
             _buffer = default;
             _minimumBytes = default;
+            _minimumSegments = default;
             _cancellationToken = default;
         }
 
@@ -460,7 +468,7 @@ namespace KcpSharp
         {
             if (_operationMode == 2)
             {
-                if (CheckQueeuSize(_queue, _minimumBytes))
+                if (CheckQueeuSize(_queue, _minimumBytes, _minimumSegments, _stream))
                 {
                     ClearPreviousOperation(true);
                     _mrvtsc.SetResult(new KcpConversationReceiveResult(0));
@@ -610,21 +618,25 @@ namespace KcpSharp
             return false;
         }
 
-        private static bool CheckQueeuSize(LinkedListOfQueueItem queue, int minimumBytes)
+        private static bool CheckQueeuSize(LinkedListOfQueueItem queue, int minimumBytes, int minimumSegments, bool stream)
         {
             LinkedListNodeOfQueueItem? node = queue.First;
             while (node is not null)
             {
                 ref KcpBuffer buffer = ref node.ValueRef.Data;
-                if (buffer.Length >= minimumBytes)
+                minimumBytes = Math.Max(minimumBytes - buffer.Length, 0);
+                if (stream || node.ValueRef.Fragment == 0)
+                {
+                    minimumSegments = Math.Max(minimumSegments - 1, 0);
+                }
+                if (minimumBytes == 0 && minimumSegments == 0)
                 {
                     return true;
                 }
-                minimumBytes -= buffer.Length;
                 node = node.Next;
             }
 
-            return minimumBytes == 0;
+            return minimumBytes == 0 && minimumSegments == 0;
         }
 
         public void SetTransportClosed()
