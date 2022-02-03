@@ -17,12 +17,7 @@ namespace KcpEcho
             builder.Command.AddCommand(BuildServerCommand());
             builder.Command.AddCommand(BuildClientCommand());
 
-            builder.UseVersionOption();
-
-            builder.UseHelp();
-            builder.UseSuggestDirective();
-            builder.RegisterWithDotnetSuggest();
-            builder.UseParseErrorReporting();
+            builder.UseDefaults();
 
             Parser parser = builder.Build();
             return await parser.InvokeAsync(args).ConfigureAwait(false);
@@ -31,45 +26,35 @@ namespace KcpEcho
         static Command BuildServerCommand()
         {
             var command = new Command("server", "Run server side.");
-            command.AddOption(ListenOption());
-            command.AddOption(MtuOption());
-            command.AddOption(ConversationOption());
-            command.Handler = CommandHandler.Create<string, int, uint, CancellationToken>(KcpEchoServer.RunAsync);
+            var listenOptions = new Option<string>("--listen", "Endpoint where the server listens.")
+            {
+                Arity = ArgumentArity.ExactlyOne
+            };
+            var mtuOption = new Option<int>("--mtu", () => 1400, "MTU.");
+            var conversationOption = new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
+
+            command.AddOption(listenOptions);
+            command.AddOption(mtuOption);
+            command.AddOption(conversationOption);
+            command.SetHandler<string, int, uint, CancellationToken>(KcpEchoServer.RunAsync, listenOptions, mtuOption, conversationOption);
             return command;
-
-            Option ListenOption() =>
-                new Option<string>("--listen", "Endpoint where the server listens.")
-                {
-                    Arity = ArgumentArity.ExactlyOne
-                };
-
-            Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU.");
-
-            Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
         }
 
         static Command BuildClientCommand()
         {
             var command = new Command("client", "Run client side.");
-            command.AddOption(EndpointOption());
-            command.AddOption(MtuOption());
-            command.AddOption(ConversationOption());
-            command.Handler = CommandHandler.Create<string, int, uint, CancellationToken>(KcpEchoClient.RunAsync);
+            var endpointOption = new Option<string>("--endpoint", "Endpoint which the client connects to.")
+            {
+                Arity = ArgumentArity.ExactlyOne
+            };
+            var mtuOption = new Option<int>("--mtu", () => 1400, "MTU.");
+            var conversationOption = new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
+
+            command.AddOption(endpointOption);
+            command.AddOption(mtuOption);
+            command.AddOption(conversationOption);
+            command.SetHandler<string, int, uint, CancellationToken>(KcpEchoClient.RunAsync, endpointOption, mtuOption, conversationOption);
             return command;
-
-            Option EndpointOption() =>
-                new Option<string>("--endpoint", "Endpoint which the client connects to.")
-                {
-                    Arity = ArgumentArity.ExactlyOne
-                };
-
-            Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU.");
-
-            Option ConversationOption() =>
-                new Option<uint>("--conversation-id", () => 0, "Conversation ID.");
 
         }
     }

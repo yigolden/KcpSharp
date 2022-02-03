@@ -19,12 +19,7 @@ namespace KcpSharp.ThroughputBanchmarks
             builder.Command.AddCommand(PacketsThroughputBenchmarkProgram.BuildCommand());
             builder.Command.AddCommand(StreamThroughputBenchmarkProgram.BuildCommand());
 
-            builder.UseVersionOption();
-
-            builder.UseHelp();
-            builder.UseSuggestDirective();
-            builder.RegisterWithDotnetSuggest();
-            builder.UseParseErrorReporting();
+            builder.UseDefaults();
 
             Parser parser = builder.Build();
             return await parser.InvokeAsync(args).ConfigureAwait(false);
