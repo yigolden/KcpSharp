@@ -18,32 +18,23 @@ namespace KcpSharp.ThroughputBanchmarks.StreamThroughputBenchmark
         private static Command BuildServerCommand()
         {
             var command = new Command("server", "Run server side.");
-            command.AddOption(ListenOption());
-            command.AddOption(MtuOption());
-            command.AddOption(WindowSizeOption());
-            command.AddOption(UpdateIntervalOption());
-            command.AddOption(NoDelayOption());
-            command.Handler = CommandHandler.Create<string, int, int, int, bool, CancellationToken>(RunServerAsync);
+            var listenOption = new Option<string>("--listen", "Endpoint where the server listens.")
+            {
+                Arity = ArgumentArity.ExactlyOne
+            };
+            var mtuOption = new Option<int>("--mtu", () => 1400, "MTU.");
+            var windowSizeOption = new Option<int>("--window-size", () => 128, "Window size.");
+            var updateIntervalOption = new Option<int>("--update-interval", () => 50, "Update interval.");
+            var noDelayOption = new Option<bool>("--no-delay", () => false, "No delay mode.");
+
+            command.AddOption(listenOption);
+            command.AddOption(mtuOption);
+            command.AddOption(windowSizeOption);
+            command.AddOption(updateIntervalOption);
+            command.AddOption(noDelayOption);
+            command.SetHandler<string, int, int, int, bool, CancellationToken>(RunServerAsync, listenOption, mtuOption, windowSizeOption, updateIntervalOption, noDelayOption);
+
             return command;
-
-            Option ListenOption() =>
-                new Option<string>("--listen", "Endpoint where the server listens.")
-                {
-                    Arity = ArgumentArity.ExactlyOne
-                };
-
-            Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU.");
-
-            Option WindowSizeOption() =>
-                new Option<int>("--window-size", () => 64, "Window size.");
-
-            Option UpdateIntervalOption() =>
-                new Option<int>("--update-interval", () => 50, "Update interval.");
-
-            Option NoDelayOption() =>
-                new Option<bool>("--no-delay", () => false, "No delay mode.");
-
         }
 
         public static Task RunServerAsync(string listen, int mtu, int windowSize, int updateInterval, bool noDelay, CancellationToken cancellationToken)
@@ -55,44 +46,30 @@ namespace KcpSharp.ThroughputBanchmarks.StreamThroughputBenchmark
         private static Command BuildClientCommand()
         {
             var command = new Command("client", "Run client side.");
-            command.AddOption(ListenOption());
-            command.AddOption(MtuOption());
-            command.AddOption(ConcurrencyOption());
-            command.AddOption(BufferSizeOption());
-            command.AddOption(WindowSizeOption());
-            command.AddOption(QueueSizeOption());
-            command.AddOption(UpdateIntervalOption());
-            command.AddOption(NoDelayOption());
-            command.Handler = CommandHandler.Create<string, int, int, int, int, int, int, bool, CancellationToken>(RunClientAsync);
+            var endpointOption = new Option<string>("--endpoint", "Endpoint which the client connects to.")
+            {
+                Arity = ArgumentArity.ExactlyOne
+            };
+            var mtuOption = new Option<int>("--mtu", () => 1400, "MTU.");
+            var concurrencyOption = new Option<int>("--concurrency", () => 1, "Concurrency.");
+            var bufferSizeOption = new Option<int>("--buffer-size", () => 16384, "Buffer size.");
+            var windowSizeOption = new Option<int>("--window-size", () => 128, "Window size.");
+            var queueSizeOption = new Option<int>("--queue-size", () => 256, "Queue size.");
+            var updateIntervalOption = new Option<int>("--update-interval", () => 50, "Update interval.");
+            var noDelayOption = new Option<bool>("--no-delay", () => false, "No delay mode.");
+
+            command.AddOption(endpointOption);
+            command.AddOption(mtuOption);
+            command.AddOption(concurrencyOption);
+            command.AddOption(bufferSizeOption);
+            command.AddOption(windowSizeOption);
+            command.AddOption(queueSizeOption);
+            command.AddOption(updateIntervalOption);
+            command.AddOption(noDelayOption);
+
+            command.SetHandler<string, int, int, int, int, int, int, bool, CancellationToken>(RunClientAsync, endpointOption, mtuOption, concurrencyOption, bufferSizeOption, windowSizeOption, queueSizeOption, updateIntervalOption, noDelayOption);
+
             return command;
-
-            Option ListenOption() =>
-                new Option<string>("--endpoint", "Endpoint which the client connects to.")
-                {
-                    Arity = ArgumentArity.ExactlyOne
-                };
-
-            Option MtuOption() =>
-                new Option<int>("--mtu", () => 1400, "MTU.");
-
-            Option ConcurrencyOption() =>
-                new Option<int>("--concurrency", () => 1, "Concurrency.");
-
-            Option BufferSizeOption() =>
-                new Option<int>("--buffer-size", () => 16384, "Buffer size.");
-
-            Option WindowSizeOption() =>
-                new Option<int>("--window-size", () => 64, "Window size.");
-
-            Option QueueSizeOption() =>
-                new Option<int>("--queue-size", () => 128, "Queue size.");
-
-            Option UpdateIntervalOption() =>
-                new Option<int>("--update-interval", () => 50, "Update interval.");
-
-            Option NoDelayOption() =>
-                new Option<bool>("--no-delay", () => false, "No delay mode.");
-
         }
 
         public static Task RunClientAsync(string endpoint, int mtu, int concurrency, int bufferSize, int windowSize, int queueSize, int updateInterval, bool noDelay, CancellationToken cancellationToken)

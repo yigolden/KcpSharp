@@ -4,10 +4,10 @@
     <PreviouslyPublishedPackageVersion>0.6.23</PreviouslyPublishedPackageVersion>
   </PropertyGroup>
   <PropertyGroup Label="Dependency Versions">
-    <SystemCommandLinePackageVersion>2.0.0-beta1.21308.1</SystemCommandLinePackageVersion>
+    <SystemCommandLinePackageVersion>2.0.0-beta2.21617.1</SystemCommandLinePackageVersion>
 
-    <NerdbankGitVersioningPackageVersion>3.4.244</NerdbankGitVersioningPackageVersion>
-    <MicrosoftSourceLinkGitHubPackageVersion>1.1.0</MicrosoftSourceLinkGitHubPackageVersion>
+    <NerdbankGitVersioningPackageVersion>3.4.255</NerdbankGitVersioningPackageVersion>
+    <MicrosoftSourceLinkGitHubPackageVersion>1.1.1</MicrosoftSourceLinkGitHubPackageVersion>
 
     <MicrosoftBclAsyncInterfacesPackageVersion>6.0.0</MicrosoftBclAsyncInterfacesPackageVersion>
     <MicrosoftBclHashCodePackageVersion>1.1.1</MicrosoftBclHashCodePackageVersion>
