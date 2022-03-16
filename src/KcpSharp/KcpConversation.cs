@@ -647,8 +647,7 @@ namespace KcpSharp
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                uint current;
-                bool update;
+                bool update = false;
                 using (KcpConversationUpdateNotification notification = await activation.WaitAsync(CancellationToken.None).ConfigureAwait(false))
                 {
                     if (_transportClosed)
@@ -659,7 +658,7 @@ namespace KcpSharp
                     ReadOnlyMemory<byte> packet = notification.Packet;
                     if (!packet.IsEmpty)
                     {
-                        SetInput(packet.Span);
+                        update = SetInput(packet.Span);
                     }
 
                     if (_transportClosed)
@@ -667,19 +666,14 @@ namespace KcpSharp
                         break;
                     }
 
-                    current = GetTimestamp();
-                    update = notification.TimerNotification;
-                    if (_nodelay)
-                    {
-                        _ts_flush = current;
-                    }
+                    update |= notification.TimerNotification;
                 }
 
                 try
                 {
                     if (update)
                     {
-                        await UpdateCoreAsync(current, cancellationToken).ConfigureAwait(false);
+                        await UpdateCoreAsync(cancellationToken).ConfigureAwait(false);
                     }
                 }
                 catch (OperationCanceledException)
@@ -701,8 +695,9 @@ namespace KcpSharp
             }
         }
 
-        private ValueTask UpdateCoreAsync(uint current, CancellationToken cancellationToken)
+        private ValueTask UpdateCoreAsync(CancellationToken cancellationToken)
         {
+            uint current = GetTimestamp();
             long slap = TimeDiff(current, _ts_flush);
             if (slap > 10000 || slap < -10000)
             {
@@ -710,7 +705,7 @@ namespace KcpSharp
                 slap = 0;
             }
 
-            if (slap >= 0)
+            if (slap >= 0 || _nodelay)
             {
                 _ts_flush += _interval;
                 if (TimeDiff(current, _ts_flush) >= 0)
@@ -785,7 +780,7 @@ namespace KcpSharp
             return activation.InputPacketAsync(packet, cancellationToken);
         }
 
-        private void SetInput(ReadOnlySpan<byte> packet)
+        private bool SetInput(ReadOnlySpan<byte> packet)
         {
             uint current = GetTimestamp();
             int packetHeaderSize = _id.HasValue ? 24 : 20;
@@ -793,6 +788,7 @@ namespace KcpSharp
             uint prev_una = _snd_una;
             uint maxack = 0, latest_ts = 0;
             bool flag = false;
+            bool mutated = false;
 
             while (true)
             {
@@ -805,7 +801,7 @@ namespace KcpSharp
                 {
                     if (BinaryPrimitives.ReadUInt32LittleEndian(packet) != _id.GetValueOrDefault())
                     {
-                        return;
+                        return mutated;
                     }
                     packet = packet.Slice(4);
                 }
@@ -816,7 +812,7 @@ namespace KcpSharp
                 packet = packet.Slice(20);
                 if ((uint)length > (uint)packet.Length)
                 {
-                    return;
+                    return mutated;
                 }
 
                 if (header.Command != KcpCommand.Push &&
@@ -824,13 +820,13 @@ namespace KcpSharp
                     header.Command != KcpCommand.WindowProbe &&
                     header.Command != KcpCommand.WindowSize)
                 {
-                    return;
+                    return mutated;
                 }
 
                 _lastReceiveTick = current;
                 _rmt_wnd = header.WindowSize;
-                HandleUnacknowledged(header.Unacknowledged);
-                UpdateSendUnacknowledged();
+                mutated = HandleUnacknowledged(header.Unacknowledged) | mutated;
+                mutated = UpdateSendUnacknowledged() | mutated;
 
                 if (header.Command == KcpCommand.Ack)
                 {
@@ -839,8 +835,8 @@ namespace KcpSharp
                     {
                         UpdateRto(rtt);
                     }
-                    HandleAck(header.SerialNumber);
-                    UpdateSendUnacknowledged();
+                    mutated = HandleAck(header.SerialNumber) | mutated;
+                    mutated = UpdateSendUnacknowledged() | mutated;
 
                     if (!flag)
                     {
@@ -871,7 +867,7 @@ namespace KcpSharp
                         AckPush(header.SerialNumber, header.Timestamp);
                         if (TimeDiff(header.SerialNumber, _rcv_nxt) >= 0)
                         {
-                            HandleData(header, packet.Slice(0, length));
+                            mutated = HandleData(header, packet.Slice(0, length)) | mutated;
                         }
                     }
                 }
@@ -885,7 +881,7 @@ namespace KcpSharp
                 }
                 else
                 {
-                    return;
+                    return mutated;
                 }
 
                 packet = packet.Slice(length);
@@ -941,10 +937,13 @@ namespace KcpSharp
                     }
                 }
             }
+
+            return mutated;
         }
 
-        private void HandleUnacknowledged(uint una)
+        private bool HandleUnacknowledged(uint una)
         {
+            bool mutated = false;
             lock (_sndBuf)
             {
                 LinkedListNodeOfBufferItem? node = _sndBuf.First;
@@ -960,6 +959,7 @@ namespace KcpSharp
                         dataRef.Release();
                         dataRef = default;
                         _cache.Return(node);
+                        mutated = true;
                     }
                     else
                     {
@@ -969,21 +969,17 @@ namespace KcpSharp
                     node = next;
                 }
             }
+            return mutated;
         }
 
-        private void UpdateSendUnacknowledged()
+        private bool UpdateSendUnacknowledged()
         {
             lock (_sndBuf)
             {
                 LinkedListNodeOfBufferItem? first = _sndBuf.First;
-                if (first is not null)
-                {
-                    _snd_una = first.ValueRef.Segment.SerialNumber;
-                }
-                else
-                {
-                    _snd_una = _snd_nxt;
-                }
+                uint snd_una = first is null ? _snd_nxt : first.ValueRef.Segment.SerialNumber;
+                uint old_snd_una = (uint)Interlocked.Exchange(ref Unsafe.As<uint, int>(ref _snd_una), (int)snd_una);
+                return snd_una != old_snd_una;
             }
         }
 
@@ -1016,11 +1012,11 @@ namespace KcpSharp
 #endif
         }
 
-        private void HandleAck(uint serialNumber)
+        private bool HandleAck(uint serialNumber)
         {
             if (TimeDiff(serialNumber, _snd_una) < 0 || TimeDiff(serialNumber, _snd_nxt) >= 0)
             {
-                return;
+                return false;
             }
 
             lock (_sndBuf)
@@ -1038,34 +1034,37 @@ namespace KcpSharp
                         dataRef.Release();
                         dataRef = default;
                         _cache.Return(node);
-                        break;
+                        return true;
                     }
 
                     if (TimeDiff(serialNumber, node.ValueRef.Segment.SerialNumber) < 0)
                     {
-                        break;
+                        return false;
                     }
 
                     node = next;
                 }
             }
+
+            return false;
         }
 
-        private void HandleData(KcpPacketHeader header, ReadOnlySpan<byte> data)
+        private bool HandleData(KcpPacketHeader header, ReadOnlySpan<byte> data)
         {
             uint serialNumber = header.SerialNumber;
             if (TimeDiff(serialNumber, _rcv_nxt + _rcv_wnd) >= 0 || TimeDiff(serialNumber, _rcv_nxt) < 0)
             {
-                return;
+                return false;
             }
 
+            bool mutated = false;
             bool repeat = false;
             LinkedListNodeOfBufferItem? node;
             lock (_rcvBuf)
             {
                 if (_transportClosed)
                 {
-                    return;
+                    return false;
                 }
                 node = _rcvBuf.Last;
                 while (node is not null)
@@ -1100,6 +1099,7 @@ namespace KcpSharp
                     {
                         _rcvBuf.AddAfter(node, _cache.Allocate(in item));
                     }
+                    mutated = true;
                 }
 
                 // move available data from rcv_buf -> rcv_queue
@@ -1115,6 +1115,7 @@ namespace KcpSharp
                         node.ValueRef.Data = default;
                         _cache.Return(node);
                         _rcv_nxt++;
+                        mutated = true;
                     }
                     else
                     {
@@ -1125,6 +1126,7 @@ namespace KcpSharp
                 }
             }
 
+            return mutated;
         }
 
         private void AckPush(uint serialNumber, uint timestamp) => _ackList.Add(serialNumber, timestamp);
