@@ -178,7 +178,7 @@ namespace KcpSharp
             _updateActivation = new KcpConversationUpdateActivation((int)_interval);
             _queueItemCache = new KcpSendReceiveQueueItemCache();
             _sendQueue = new KcpSendQueue(_bufferPool, _updateActivation, _stream, options is null || options.SendQueueSize <= 0 ? KcpConversationOptions.SendQueueSizeDefaultValue : options.SendQueueSize, _mss, _queueItemCache);
-            _receiveQueue = new KcpReceiveQueue(_stream, _queueItemCache);
+            _receiveQueue = new KcpReceiveQueue(_stream, options is null || options.ReceiveQueueSize <= 0 ? KcpConversationOptions.ReceiveQueueSizeDefaultValue : options.ReceiveQueueSize, _queueItemCache);
             _ackList = new KcpAcknowledgeList(_sendQueue, (int)_snd_wnd);
 
             _updateLoopCts = new CancellationTokenSource();

@@ -20,6 +20,7 @@ namespace KcpSharp
 
         private readonly LinkedListOfQueueItem _queue;
         private readonly bool _stream;
+        private readonly int _queueSize;
         private readonly KcpSendReceiveQueueItemCache _cache;
         private int _completedPacketsCount;
 
@@ -35,7 +36,7 @@ namespace KcpSharp
         private CancellationToken _cancellationToken;
         private CancellationTokenRegistration _cancellationRegistration;
 
-        public KcpReceiveQueue(bool stream, KcpSendReceiveQueueItemCache cache)
+        public KcpReceiveQueue(bool stream, int queueSize, KcpSendReceiveQueueItemCache cache)
         {
             _mrvtsc = new ManualResetValueTaskSourceCore<KcpConversationReceiveResult>()
             {
@@ -43,6 +44,7 @@ namespace KcpSharp
             };
             _queue = new LinkedListOfQueueItem();
             _stream = stream;
+            _queueSize = queueSize;
             _cache = cache;
         }
 
@@ -658,10 +660,12 @@ namespace KcpSharp
 
         public int GetQueueSize()
         {
+            int count;
             lock (_queue)
             {
-                return _queue.Count;
+                count = _queue.Count;
             }
+            return Math.Max(_queue.Count - _queueSize, 0);
         }
 
         public void Dispose()

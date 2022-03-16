@@ -61,6 +61,11 @@
         public int SendQueueSize { get; set; }
 
         /// <summary>
+        /// The number of packets in the receive queue.
+        /// </summary>
+        public int ReceiveQueueSize { get; set; }
+
+        /// <summary>
         /// The number of bytes to reserve at the start of buffer passed into the underlying transport. The transport should fill this reserved space.
         /// </summary>
         public int PreBufferSize { get; set; }
@@ -82,5 +87,6 @@
         internal const uint UpdateIntervalDefaultValue = 100;
 
         internal const int SendQueueSizeDefaultValue = 32;
+        internal const int ReceiveQueueSizeDefaultValue = 32;
     }
 }
