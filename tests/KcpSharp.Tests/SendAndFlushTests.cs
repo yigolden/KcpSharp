@@ -60,15 +60,23 @@ namespace KcpSharp.Tests
         {
             return TestHelper.RunWithTimeout(TimeSpan.FromSeconds(15), async cancellationToken =>
             {
-                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendWindow = 2, ReceiveWindow = 2, RemoteReceiveWindow = 2, SendQueueSize = 2, UpdateInterval = 10, NoDelay = true });
+                using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { SendWindow = 2, ReceiveWindow = 2, RemoteReceiveWindow = 2, SendQueueSize = 2, ReceiveQueueSize = 2, UpdateInterval = 10, NoDelay = true });
 
-                await SendPackets(pipe.Alice, 4, cancellationToken);
+                await SendPackets(pipe.Alice, 6, cancellationToken);
                 Task flushTask = pipe.Alice.FlushAsync(cancellationToken).AsTask();
                 Assert.False(flushTask.IsCompleted);
                 Assert.True(pipe.Alice.UnflushedBytes > 0);
 
                 await ReceiveAllAsync(pipe.Bob, 1, cancellationToken);
                 await Task.Delay(200, cancellationToken);
+                Assert.False(flushTask.IsCompleted);
+                Assert.True(pipe.Alice.UnflushedBytes > 0);
+
+                await ReceiveAllAsync(pipe.Bob, 1, cancellationToken);
+                Assert.False(flushTask.IsCompleted);
+                Assert.True(pipe.Alice.UnflushedBytes > 0);
+
+                await ReceiveAllAsync(pipe.Bob, 1, cancellationToken);
                 Assert.False(flushTask.IsCompleted);
                 Assert.True(pipe.Alice.UnflushedBytes > 0);
 

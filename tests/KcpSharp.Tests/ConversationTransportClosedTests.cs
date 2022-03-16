@@ -186,7 +186,7 @@ namespace KcpSharp.Tests
             {
                 var trackedAllocator = new TrackedBufferAllocator();
                 {
-                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferPool = trackedAllocator, SendQueueSize = 8, SendWindow = 4, ReceiveWindow = 4, UpdateInterval = 30, StreamMode = true });
+                    using KcpConversationPipe pipe = KcpConversationFactory.CreatePerfectPipe(0x12345678, new KcpConversationOptions { BufferPool = trackedAllocator, SendQueueSize = 4, ReceiveQueueSize = 4, SendWindow = 2, ReceiveWindow = 2, UpdateInterval = 30, StreamMode = true });
 
                     Task<bool> sendTask = SendMultplePacketsAsync(pipe.Alice, packets, cancellationToken);
                     await Task.Delay(2000, cancellationToken);
