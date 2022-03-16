@@ -80,6 +80,11 @@
         /// </summary>
         public KcpKeepAliveOptions? KeepAliveOptions { get; set; }
 
+        /// <summary>
+        /// Options for receive window size notification functionality.
+        /// </summary>
+        public KcpReceiveWindowNotificationOptions? ReceiveWindowNotificationOptions { get; set; }
+
         internal const int MtuDefaultValue = 1400;
         internal const uint SendWindowDefaultValue = 32;
         internal const uint ReceiveWindowDefaultValue = 128;

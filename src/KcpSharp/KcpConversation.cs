@@ -76,6 +76,10 @@ namespace KcpSharp
         private uint _lastReceiveTick;
         private uint _lastSendTick;
 
+        private KcpReceiveWindowNotificationOptions? _receiveWindowNotificationOptions;
+        private uint _ts_rcv_notify;
+        private uint _ts_rcv_notify_wait;
+
         private KcpConversationUpdateActivation? _updateActivation;
         private CancellationTokenSource? _updateLoopCts;
         private bool _transportClosed;
@@ -88,7 +92,6 @@ namespace KcpSharp
         private const int IKCP_THRESH_MIN = 2;
         private const uint IKCP_PROBE_INIT = 7000;       // 7 secs to probe window size
         private const uint IKCP_PROBE_LIMIT = 120000;    // up to 120 secs to probe window
-
 
         /// <summary>
         /// Construct a reliable channel using KCP protocol.
@@ -194,6 +197,14 @@ namespace KcpSharp
                 _keepAliveInterval = (uint)keepAliveOptions.SendInterval;
                 _keepAliveGracePeriod = (uint)keepAliveOptions.GracePeriod;
             }
+
+            _receiveWindowNotificationOptions = options?.ReceiveWindowNotificationOptions;
+            if (_receiveWindowNotificationOptions is not null)
+            {
+                _ts_rcv_notify_wait = 0;
+                _ts_rcv_notify = _ts_flush + (uint)_receiveWindowNotificationOptions.InitialInterval;
+            }
+
             RunUpdateOnActivation();
         }
 
@@ -341,6 +352,7 @@ namespace KcpSharp
             int postBufferSize = _postBufferSize;
             int packetHeaderSize = _id.HasValue ? 24 : 20;
             int sizeLimitBeforePostBuffer = _mtu - _postBufferSize;
+            bool anyPacketSent = false;
 
             ushort windowSize = (ushort)GetUnusedReceiveWindow();
             uint unacknowledged = _rcv_nxt;
@@ -362,6 +374,7 @@ namespace KcpSharp
                         _lastSendTick = GetTimestamp();
                         size = preBufferSize;
                         buffer.Span.Slice(0, size).Clear();
+                        anyPacketSent = true;
                     }
                     var header = new KcpPacketHeader(KcpCommand.Ack, 0, windowSize, timestamp, serialNumber, unacknowledged);
                     header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
@@ -370,72 +383,6 @@ namespace KcpSharp
             }
 
             uint current = GetTimestamp();
-
-            // probe window size (if remote window size equals zero)
-            if (_rmt_wnd == 0)
-            {
-                if (_probe_wait == 0)
-                {
-                    _probe_wait = IKCP_PROBE_INIT;
-                    _ts_probe = current + _probe_wait;
-                }
-                else
-                {
-                    if (TimeDiff(current, _ts_probe) >= 0)
-                    {
-                        if (_probe_wait < IKCP_PROBE_INIT)
-                        {
-                            _probe_wait = IKCP_PROBE_INIT;
-                        }
-                        _probe_wait += _probe_wait / 2;
-                        if (_probe_wait > IKCP_PROBE_LIMIT)
-                        {
-                            _probe_wait = IKCP_PROBE_LIMIT;
-                        }
-                        _ts_probe = current + _probe_wait;
-                        _probe |= KcpProbeType.AskSend;
-                    }
-                }
-            }
-            else
-            {
-                _ts_probe = 0;
-                _probe_wait = 0;
-            }
-
-            // flush window probing commands
-            if ((_probe & KcpProbeType.AskSend) != 0)
-            {
-                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
-                {
-                    buffer.Span.Slice(size, postBufferSize).Clear();
-                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
-                    _lastSendTick = GetTimestamp();
-                    size = preBufferSize;
-                    buffer.Span.Slice(0, size).Clear();
-                }
-                var header = new KcpPacketHeader(KcpCommand.WindowProbe, 0, windowSize, 0, 0, unacknowledged);
-                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
-                size += bytesWritten;
-            }
-
-            // flush window probing commands
-            if ((_probe & KcpProbeType.AskTell) != 0)
-            {
-                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
-                {
-                    buffer.Span.Slice(size, postBufferSize).Clear();
-                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
-                    _lastSendTick = GetTimestamp();
-                    size = preBufferSize;
-                    buffer.Span.Slice(0, size).Clear();
-                }
-                var header = new KcpPacketHeader(KcpCommand.WindowSize, 0, windowSize, 0, 0, unacknowledged);
-                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
-                size += bytesWritten;
-            }
-
-            _probe = KcpProbeType.None;
 
             // calculate window size
             uint cwnd = Math.Min(_snd_wnd, _rmt_wnd);
@@ -522,6 +469,7 @@ namespace KcpSharp
                         _lastSendTick = GetTimestamp();
                         size = preBufferSize;
                         buffer.Span.Slice(0, size).Clear();
+                        anyPacketSent = true;
                     }
 
                     lock (segmentNode)
@@ -545,6 +493,75 @@ namespace KcpSharp
                 segmentNode = nextSegmentNode;
             }
 
+            _ackList.Clear();
+
+            // probe window size (if remote window size equals zero)
+            if (_rmt_wnd == 0)
+            {
+                if (_probe_wait == 0)
+                {
+                    _probe_wait = IKCP_PROBE_INIT;
+                    _ts_probe = current + _probe_wait;
+                }
+                else
+                {
+                    if (TimeDiff(current, _ts_probe) >= 0)
+                    {
+                        if (_probe_wait < IKCP_PROBE_INIT)
+                        {
+                            _probe_wait = IKCP_PROBE_INIT;
+                        }
+                        _probe_wait += _probe_wait / 2;
+                        if (_probe_wait > IKCP_PROBE_LIMIT)
+                        {
+                            _probe_wait = IKCP_PROBE_LIMIT;
+                        }
+                        _ts_probe = current + _probe_wait;
+                        _probe |= KcpProbeType.AskSend;
+                    }
+                }
+            }
+            else
+            {
+                _ts_probe = 0;
+                _probe_wait = 0;
+            }
+
+            // flush window probing command
+            if ((_probe & KcpProbeType.AskSend) != 0)
+            {
+                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
+                {
+                    buffer.Span.Slice(size, postBufferSize).Clear();
+                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    _lastSendTick = GetTimestamp();
+                    size = preBufferSize;
+                    buffer.Span.Slice(0, size).Clear();
+                    anyPacketSent = true;
+                }
+                var header = new KcpPacketHeader(KcpCommand.WindowProbe, 0, windowSize, 0, 0, unacknowledged);
+                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
+                size += bytesWritten;
+            }
+
+            // flush window probing response
+            if (!anyPacketSent && ShouldSendWindowSize(current))
+            {
+                if ((size + packetHeaderSize) > sizeLimitBeforePostBuffer)
+                {
+                    buffer.Span.Slice(size, postBufferSize).Clear();
+                    await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
+                    _lastSendTick = GetTimestamp();
+                    size = preBufferSize;
+                    buffer.Span.Slice(0, size).Clear();
+                }
+                var header = new KcpPacketHeader(KcpCommand.WindowSize, 0, windowSize, 0, 0, unacknowledged);
+                header.EncodeHeader(_id, 0, buffer.Span.Slice(size), out int bytesWritten);
+                size += bytesWritten;
+            }
+
+            _probe = KcpProbeType.None;
+
             // flush remaining segments
             if (size > preBufferSize)
             {
@@ -552,8 +569,6 @@ namespace KcpSharp
                 await _transport.SendPacketAsync(buffer.Slice(0, size + postBufferSize), cancellationToken).ConfigureAwait(false);
                 _lastSendTick = GetTimestamp();
             }
-
-            _ackList.Clear();
 
             // update window
             bool lockTaken = false;
@@ -608,6 +623,43 @@ namespace KcpSharp
                     _lastSendTick = GetTimestamp();
                 }
             }
+        }
+
+        private bool ShouldSendWindowSize(uint current)
+        {
+            if ((_probe & KcpProbeType.AskTell) != 0)
+            {
+                return true;
+            }
+
+            KcpReceiveWindowNotificationOptions? options = _receiveWindowNotificationOptions;
+            if (options is null)
+            {
+                return false;
+            }
+
+            if (TimeDiff(current, _ts_rcv_notify) < 0)
+            {
+                return false;
+            }
+
+            uint inital = (uint)options.InitialInterval;
+            uint maximum = (uint)options.MaximumInterval;
+            if (_ts_rcv_notify_wait < inital)
+            {
+                _ts_rcv_notify_wait = inital;
+            }
+            else if (_ts_rcv_notify_wait >= maximum)
+            {
+                _ts_rcv_notify_wait = maximum;
+            }
+            else
+            {
+                _ts_rcv_notify_wait = Math.Min(maximum, _ts_rcv_notify_wait + _ts_rcv_notify_wait / 2);
+            }
+            _ts_rcv_notify = current + _ts_rcv_notify_wait;
+
+            return true;
         }
 
         private LinkedListNodeOfBufferItem CreateSendBufferItem(in KcpBuffer data, byte fragment, uint current, ushort windowSize, uint serialNumber, uint unacknowledged, uint rto)
@@ -868,6 +920,15 @@ namespace KcpSharp
                         if (TimeDiff(header.SerialNumber, _rcv_nxt) >= 0)
                         {
                             mutated = HandleData(header, packet.Slice(0, length)) | mutated;
+                        }
+
+                        if (_receiveWindowNotificationOptions is not null)
+                        {
+                            if (_ts_rcv_notify_wait != 0)
+                            {
+                                _ts_rcv_notify_wait = 0;
+                                _ts_rcv_notify = current + (uint)_receiveWindowNotificationOptions.InitialInterval;
+                            }
                         }
                     }
                 }
